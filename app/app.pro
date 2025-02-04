@@ -3,11 +3,9 @@
 ###################################################
 
 TEMPLATE = app
-TARGET   = NewAwesomeApplication
+TARGET   = SpaceGuard
 
-#QT = core gui widgets network qt5compat
-CONFIG -= qt
-CONFIG += console
+QT = core gui widgets
 
 CONFIG += strict_c++ c++2b
 
@@ -39,7 +37,9 @@ INCLUDEPATH += \
 ###################################################
 
 SOURCES += \
-	src/main.cpp
+	src/main.cpp \
+	src/mainwindow.cpp \
+	src/snapshot.cpp
 
 ###################################################
 #                 LIBS
@@ -84,3 +84,10 @@ linux*|mac*|freebsd {
 	Release:DEFINES += NDEBUG=1
 	Debug:DEFINES += _DEBUG
 }
+
+FORMS += \
+	src/mainwindow.ui
+
+HEADERS += \
+	src/mainwindow.h \
+	src/snapshot.h
