@@ -14,13 +14,11 @@ static void buildSnapshot(FileSystemItem& root, const QString& path)
 	{
 		if (child.isDir())
 		{
-			const QString& childPath = child.absoluteFilePath();
-			buildSnapshot(root.children[childPath], childPath);
+			buildSnapshot(root.children[child.fileName()], child.absoluteFilePath());
 		}
 		else if (child.isFile())
 		{
-			const QString& childPath = child.absoluteFilePath();
-			root.children[childPath].totalSize = child.size();
+			root.children[child.fileName()].totalSize = child.size();
 		}
 	}
 
@@ -40,10 +38,7 @@ Snapshot Snapshot::create(const QString& root)
 	return s;
 }
 
-static QList<QString> compareFileSystemItems(const FileSystemItem& oldItem,
-	const FileSystemItem& newItem,
-	qint64 threshold,
-	const QString& currentPath = QString()) {
+static QList<QString> compareFileSystemItems(const FileSystemItem& oldItem, const FileSystemItem& newItem, qint64 threshold, const QString& currentPath) {
 	QList<QString> report;
 	const qint64 sizeIncrease = newItem.totalSize - oldItem.totalSize;
 
@@ -58,9 +53,7 @@ static QList<QString> compareFileSystemItems(const FileSystemItem& oldItem,
 		const FileSystemItem& oldChild = it.value();
 		const FileSystemItem& newChild = newItem.children[childName];
 
-		QString childPath = currentPath.isEmpty()
-			? "/" + childName
-			: currentPath + "/" + childName;
+		const QString childPath = currentPath + "/" + childName;
 
 		QList<QString> subReport = compareFileSystemItems(oldChild, newChild, threshold, childPath);
 		if (!subReport.isEmpty()) {
@@ -76,9 +69,7 @@ static QList<QString> compareFileSystemItems(const FileSystemItem& oldItem,
 
 		const FileSystemItem& newChild = it.value();
 		const qint64 newItemIncrease = newChild.totalSize;
-		QString childPath = currentPath.isEmpty()
-			? "/" + childName
-			: currentPath + "/" + childName;
+		const QString childPath = currentPath + "/" + childName;
 
 		if (newItemIncrease > 0 && newItemIncrease >= threshold) {
 			QList<QString> subReport = compareFileSystemItems(FileSystemItem(), newChild, threshold, childPath);
@@ -115,7 +106,10 @@ static QList<QString> compareFileSystemItems(const FileSystemItem& oldItem,
 
 QStringList Snapshot::compare(const Snapshot& oldSnapshot, const Snapshot& newSnapshot, qint64 threshold)
 {
-	return compareFileSystemItems(oldSnapshot.root, newSnapshot.root, threshold);
+	if (oldSnapshot.rootPath != newSnapshot.rootPath)
+		return { "ERROR: different root paths!" };
+
+	return compareFileSystemItems(oldSnapshot.root, newSnapshot.root, threshold, oldSnapshot.rootPath);
 }
 
 inline QDataStream& operator<<(QDataStream& stream, const FileSystemItem& item)
