@@ -1,9 +1,12 @@
 ﻿#include "snapshot.h"
 
+#include <QBuffer>
 #include <QDir>
 #include <QDataStream>
 #include <QFile>
 #include <QFileInfo>
+
+#include <assert.h>
 
 static void buildSnapshot(FileSystemItem& root, const QString& path)
 {
@@ -29,7 +32,10 @@ static void buildSnapshot(FileSystemItem& root, const QString& path)
 
 Snapshot Snapshot::create(const QString& root)
 {
+	assert(root.endsWith('/'));
+
 	Snapshot s;
+	s.rootPath = root;
 	buildSnapshot(s.root, root);
 	return s;
 }
@@ -107,8 +113,6 @@ static QList<QString> compareFileSystemItems(const FileSystemItem& oldItem,
 	return report;
 }
 
-
-
 QStringList Snapshot::compare(const Snapshot& oldSnapshot, const Snapshot& newSnapshot, qint64 threshold)
 {
 	return compareFileSystemItems(oldSnapshot.root, newSnapshot.root, threshold);
@@ -134,9 +138,17 @@ bool Snapshot::save(const QString& path) const
 	if (!file.open(QIODevice::WriteOnly))
 		return false;
 
-	QDataStream out(&file);
+	QBuffer buffer;
+	buffer.open(QIODevice::WriteOnly);
+
+	QDataStream out(&buffer);
 	out.setVersion(QDataStream::Qt_5_15);
+	out << rootPath;
 	out << root;
+
+	const QByteArray data = qCompress(buffer.data(), 3);
+	if (file.write(data) != data.size())
+		return false;
 
 	file.close();
 	return true;
@@ -150,8 +162,16 @@ bool Snapshot::load(const QString& path)
 
 	root.children.clear();
 
-	QDataStream in(&file);
+	QByteArray data = file.readAll();
+	data = qUncompress(data);
+
+	QBuffer buffer;
+	buffer.setBuffer(&data);
+	buffer.open(QIODevice::ReadOnly);
+
+	QDataStream in(&buffer);
 	in.setVersion(QDataStream::Qt_5_15);
+	in >> rootPath;
 	in >> root;
 
 	file.close();

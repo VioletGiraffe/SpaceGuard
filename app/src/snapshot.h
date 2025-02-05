@@ -11,11 +11,15 @@ struct FileSystemItem
 
 struct Snapshot
 {
-	static Snapshot create(const QString& root);
-	static QStringList compare(const Snapshot& oldSnapshot, const Snapshot& newSnapshot, qint64 threshold);
+	[[nodiscard]] static Snapshot create(const QString& root);
+	[[nodiscard]] static QStringList compare(const Snapshot& oldSnapshot, const Snapshot& newSnapshot, qint64 threshold);
 
-	bool save(const QString& path) const;
-	bool load(const QString& path);
+	[[nodiscard]] bool save(const QString& path) const;
+	[[nodiscard]] bool load(const QString& path);
 
+	[[nodiscard]] inline QString path() const { return rootPath; }
+
+private:
 	FileSystemItem root;
+	QString rootPath;
 };

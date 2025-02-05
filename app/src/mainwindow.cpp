@@ -3,11 +3,12 @@
 
 #include "snapshot.h"
 
+#include <qdatetime.h>
 #include <QDir>
 #include <QFileDialog>
 #include <QMessageBox>
 
-static constexpr auto SnapshotExtensionFilter = "*.spaceguard";
+#define SnapshotExtension "spaceguard"
 
 MainWindow::MainWindow(QWidget *parent) :
 	QMainWindow(parent),
@@ -31,7 +32,8 @@ MainWindow::~MainWindow()
 
 void MainWindow::save()
 {
-	const auto saveTo = QFileDialog::getSaveFileName(this, {}, {}, SnapshotExtensionFilter);
+	const QString defaultName = QDateTime::currentDateTime().toString("dd-MM-yy hh-mm.") + SnapshotExtension;
+	const auto saveTo = QFileDialog::getSaveFileName(this, {}, QDir::currentPath() + "/" + defaultName, "*." SnapshotExtension);
 	if (saveTo.isEmpty())
 		return;
 
@@ -42,13 +44,19 @@ void MainWindow::save()
 
 void MainWindow::load()
 {
-	const auto path = QFileDialog::getOpenFileName(this, {}, SnapshotExtensionFilter);
+	const auto path = QFileDialog::getOpenFileName(this, {}, "*." SnapshotExtension);
 	if (path.isEmpty())
 		return;
 
 	_loadedSnapshot = Snapshot{};
 	if (!_loadedSnapshot->load(path))
+	{
+		_loadedSnapshot.reset();
 		QMessageBox::critical(this, {}, "Failed to load the snapshot from\n" + path);
+		return;
+	}
+
+	ui->pathToAnalyze->setText(_loadedSnapshot->path());
 }
 
 void MainWindow::compare()
@@ -73,11 +81,15 @@ void MainWindow::compare()
 
 std::optional<Snapshot> MainWindow::takeSnapshot()
 {
-	if (const auto path = ui->pathToAnalyze->text(); path.isEmpty() || !QDir{path}.exists())
+	QString path = ui->pathToAnalyze->text();
+	if (!path.isEmpty() && !path.endsWith('/'))
+		path += '/';
+
+	if (path.isEmpty() || !QDir{path}.exists())
 	{
 		QMessageBox::warning(this, {}, "The specified path is invalid or doesn't exist.");
 		return {};
 	}
 
-	return Snapshot::create(ui->pathToAnalyze->text());
+	return Snapshot::create(path);
 }
