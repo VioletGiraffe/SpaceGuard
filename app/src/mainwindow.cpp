@@ -10,6 +10,18 @@
 
 #define SnapshotExtension "spaceguard"
 
+inline QString toVolume(qint64 bytes)
+{
+	if (bytes < 1024)
+		return QString::number(bytes) + " B";
+	if (bytes < 1024 * 1024)
+		return QString::number((float)bytes / 1024.0f, 'f', 1) + " KiB";
+	if (bytes < 1024 * 1024 * 1024)
+		return QString::number((float)bytes / (1024.0f * 1024.0f), 'f', 1) + " MiB";
+	else
+		return QString::number((float)bytes / (1024.0f * 1024.0f * 1024.0f), 'f', 1) + " GiB";
+}
+
 MainWindow::MainWindow(QWidget *parent) :
 	QMainWindow(parent),
 	ui(new Ui::MainWindow)
@@ -75,8 +87,16 @@ void MainWindow::compare()
 	if (!snap)
 		return;
 
-	const QStringList diff = Snapshot::compare(*_loadedSnapshot, *snap, 512 * 1024);
-	ui->text->setPlainText(diff.join("\n\n"));
+	QList<Snapshot::Change> diff = Snapshot::compare(*_loadedSnapshot, *snap, 512 * 1024);
+	std::sort(diff.begin(), diff.end(), [](const auto& a, const auto& b) { return a.sizeIncrease > b.sizeIncrease; });
+
+	QString text;
+	for (const auto& change : diff)
+	{
+		text += toVolume(change.sizeIncrease) + "\t" + change.path + "\n";
+	}
+
+	ui->text->setPlainText(text);
 }
 
 std::optional<Snapshot> MainWindow::takeSnapshot()
