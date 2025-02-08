@@ -90,13 +90,29 @@ void MainWindow::compare()
 	QList<Snapshot::Change> diff = Snapshot::compare(*_loadedSnapshot, *snap, 512 * 1024);
 	std::sort(diff.begin(), diff.end(), [](const auto& a, const auto& b) { return a.sizeIncrease > b.sizeIncrease; });
 
-	QString text;
-	for (const auto& change : diff)
+	ui->table->setUpdatesEnabled(false);
+	ui->table->clearContents();
+	ui->table->setRowCount(diff.size());
+
+	for (qsizetype i = 0; i < diff.size(); ++i)
 	{
-		text += toVolume(change.sizeIncrease) + "\t" + change.path + "\n";
+		const auto& change = diff[i];
+		QString path = change.path;
+		if (path.endsWith('/'))
+		{
+			path.chop(1);
+			path = '[' + path + ']';
+		}
+
+		auto* sizeItem = new QTableWidgetItem(toVolume(change.sizeIncrease));
+		auto* pathItem = new QTableWidgetItem(path);
+
+		ui->table->setItem(i, 0, sizeItem);
+		ui->table->setItem(i, 1, pathItem);
 	}
 
-	ui->text->setPlainText(text);
+	ui->table->setUpdatesEnabled(true);
+	ui->table->resizeColumnsToContents();
 }
 
 std::optional<Snapshot> MainWindow::takeSnapshot()

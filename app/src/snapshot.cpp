@@ -14,7 +14,7 @@ static void buildSnapshot(FileSystemItem& root, const QString& path)
 	{
 		if (child.isDir())
 		{
-			buildSnapshot(root.children[child.fileName()], child.absoluteFilePath());
+			buildSnapshot(root.children[child.fileName() + '/'], child.absoluteFilePath());
 		}
 		else if (child.isFile())
 		{
@@ -55,7 +55,7 @@ static QList<Snapshot::Change> compareFileSystemItems(const FileSystemItem& oldI
 		const FileSystemItem& oldChild = it.value();
 		const FileSystemItem& newChild = newItem.children[childName];
 
-		const QString childPath = currentPath + "/" + childName;
+		const QString childPath = currentPath + childName;
 
 		QList<Snapshot::Change> subReport = compareFileSystemItems(oldChild, newChild, threshold, childPath);
 		if (!subReport.isEmpty())
@@ -73,7 +73,7 @@ static QList<Snapshot::Change> compareFileSystemItems(const FileSystemItem& oldI
 
 		const FileSystemItem& newChild = it.value();
 		const qint64 newItemSize = newChild.totalSize;
-		const QString childPath = currentPath + "/" + childName;
+		const QString childPath = currentPath + childName;
 
 		if (newItemSize >= threshold)
 		{
