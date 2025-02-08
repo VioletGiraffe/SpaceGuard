@@ -45,7 +45,7 @@ SOURCES += \
 #                 LIBS
 ###################################################
 
-LIBS += -L$${DESTDIR} -lcpputils
+LIBS += -L$${DESTDIR} -lqtutils -lcpputils
 
 mac*|linux*|freebsd*{
 	PRE_TARGETDEPS += $${DESTDIR}/libcpputils.a
@@ -90,4 +90,5 @@ FORMS += \
 
 HEADERS += \
 	src/mainwindow.h \
+	src/settings.h \
 	src/snapshot.h

@@ -1,5 +1,5 @@
 TEMPLATE = subdirs
 
-SUBDIRS += app cpputils cpp-template-utils
+SUBDIRS += app qtutils cpputils cpp-template-utils
 
-app.depends = cpputils cpp-template-utils
+app.depends = qtutils cpputils cpp-template-utils

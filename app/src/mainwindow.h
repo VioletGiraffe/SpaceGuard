@@ -16,13 +16,18 @@ public:
 	~MainWindow();
 
 private:
-	void save();
-	void load();
-	void compare();
+	void onSave();
+	void onLoad();
+	void onCompare();
 
 	std::optional<Snapshot> takeSnapshot();
 
+	static void openInExplorer(const QString& path);
+
+	void calculateDiffAndDisplayResult();
+
 private:
 	std::optional<Snapshot> _loadedSnapshot;
+	std::optional<Snapshot> _currentSnapshot;
 	Ui::MainWindow *ui;
 };
