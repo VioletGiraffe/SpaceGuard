@@ -81,7 +81,7 @@ static QList<Snapshot::Change> compareFileSystemItems(const FileSystemItem& oldI
 
 			if (subReport.isEmpty())
 			{
-				childReports.emplace_back(childPath, newItemSize);
+				childReports.emplace_back(Snapshot::Change{childPath, newItemSize}); // TODO: for some reason required for Apple clang
 				hasSignificantChildren = true;
 			}
 			else
@@ -98,7 +98,7 @@ static QList<Snapshot::Change> compareFileSystemItems(const FileSystemItem& oldI
 		if (!hasSignificantChildren)
 		{
 			// Report this node if no significant children
-			report.emplace_back(currentPath, sizeIncrease);
+			report.emplace_back(Snapshot::Change{currentPath, sizeIncrease});
 		}
 		else
 		{
