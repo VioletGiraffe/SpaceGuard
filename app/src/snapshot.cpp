@@ -60,7 +60,7 @@ static QList<Snapshot::Change> compareFileSystemItems(const FileSystemItem& oldI
 		QList<Snapshot::Change> subReport = compareFileSystemItems(oldChild, newChild, threshold, childPath);
 		if (!subReport.isEmpty())
 		{
-			childReports += subReport;
+			childReports += std::move(subReport);
 			hasSignificantChildren = true;
 		}
 	}
@@ -86,7 +86,7 @@ static QList<Snapshot::Change> compareFileSystemItems(const FileSystemItem& oldI
 			}
 			else
 			{
-				childReports += subReport;
+				childReports += std::move(subReport);
 				hasSignificantChildren = true;
 			}
 		}
@@ -103,13 +103,13 @@ static QList<Snapshot::Change> compareFileSystemItems(const FileSystemItem& oldI
 		else
 		{
 			// Otherwise report children's results
-			report += childReports;
+			report += std::move(childReports);
 		}
 	}
 	else
 	{
 		// Still report children even if parent didn't meet threshold
-		report += childReports;
+		report += std::move(childReports);
 	}
 
 	return report;
