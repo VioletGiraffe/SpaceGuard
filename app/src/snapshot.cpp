@@ -12,6 +12,9 @@ static void buildSnapshot(FileSystemItem& root, const QString& path)
 {
 	for (const QFileInfo& child : QDir{ path }.entryInfoList(QDir::AllEntries | QDir::Hidden | QDir::System | QDir::NoDotAndDotDot))
 	{
+		if (child.isSymLink()) [[unlikely]]
+			continue;
+
 		if (child.isDir())
 		{
 			buildSnapshot(root.children[child.fileName() + '/'], child.absoluteFilePath());
