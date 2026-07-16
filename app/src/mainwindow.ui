@@ -47,7 +47,7 @@
          <string notr="true"> MiB</string>
         </property>
         <property name="minimum">
-         <number>1</number>
+         <number>0</number>
         </property>
         <property name="maximum">
          <number>999999999</number>
