@@ -1,78 +1,72 @@
 name: CI
 
-on: [push, pull_request]
-
-env:
-  # Path to the solution file relative to the root of the project.
-  SOLUTION_FILE_PATH: .
-
-  # Configuration type to build.
-  # You can convert this to a build matrix if you need coverage of multiple configuration types.
-  # https://docs.github.com/actions/learn-github-actions/managing-complex-workflows#using-a-build-matrix
-  BUILD_CONFIGURATION: Release
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
 
 jobs:
-  build:
-    name: Build & test on ${{ matrix.os }} with ${{ matrix.compiler }}
+  build-and-test:
+    name: Build and test on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [ubuntu-24.04, macos-14, windows-latest]
 
     steps:
     - name: Checkout
       uses: actions/checkout@v4
       with:
-        submodules: 'recursive'
+        submodules: recursive
 
     - name: Install Qt
       uses: jurplel/install-qt-action@v4
       with:
-        version: 6.6.*
+        version: '6.6.*'
+        target: desktop
+        archives: 'qtbase icu'
+        cache: 'true'
 
-    - name: Windows - setup MSBuild
+    - name: Set up MSVC
       if: startsWith(matrix.os, 'windows')
-      uses: microsoft/setup-msbuild@v2
+      uses: ilammy/msvc-dev-cmd@v1
 
-    - name: Windows
+    - name: Build application on Windows
       if: startsWith(matrix.os, 'windows')
       shell: cmd
       run: |
-        %QT_ROOT_DIR%\bin\qmake.exe -v
-        call "%programfiles%\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x64
-        %QT_ROOT_DIR%\bin\qmake.exe -tp vc -r
-        msbuild /t:Build /p:Configuration=Release;PlatformToolset=v143
+        "%QT_ROOT_DIR%\bin\qmake.exe" -v
+        "%QT_ROOT_DIR%\bin\qmake.exe" -tp vc -r
+        msbuild SpaceGuard.sln /t:Build /p:Configuration=Release;PlatformToolset=v143
 
-    - name: Mac
-      if: startsWith(matrix.os, 'macos')
-      working-directory: ${{env.GITHUB_WORKSPACE}}
+    - name: Build tests on Windows
+      if: startsWith(matrix.os, 'windows')
+      shell: cmd
+      working-directory: tests
       run: |
-        clang --version
-        $QT_ROOT_DIR/bin/qmake -r
-        make -j
+        "%QT_ROOT_DIR%\bin\qmake.exe" -tp vc -r
+        msbuild tests.sln /t:Build /p:Configuration=Release;PlatformToolset=v143
 
-    - name: Linux
-      if: startsWith(matrix.os, 'ubuntu')
-      working-directory: ${{env.GITHUB_WORKSPACE}}
+    - name: Build application on macOS and Linux
+      if: ${{ !startsWith(matrix.os, 'windows') }}
       run: |
-        sudo apt update -y; sudo apt install -qq gcc-12 g++-12
-        sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-12 50
-        sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-12 50
-        g++ --version
+        "$QT_ROOT_DIR/bin/qmake" -v
+        "$QT_ROOT_DIR/bin/qmake" -r CONFIG+=release
+        make -j2
 
-        $QT_ROOT_DIR/bin/qmake -r
-        make -j
+    - name: Build tests on macOS and Linux
+      if: ${{ !startsWith(matrix.os, 'windows') }}
+      working-directory: tests
+      run: |
+        "$QT_ROOT_DIR/bin/qmake" -r CONFIG+=release
+        make -j2
 
-    # - name: Test run
-    #   if: startsWith(matrix.os, 'macos')
-    #   run: ./tests/bin/tests.app/Contents/MacOS/tests
-      
-    # - name: Test run
-    #   if: startsWith(matrix.os, 'ubuntu')
-    #   run: ./tests/bin/tests
+    - name: Run tests on Windows
+      if: startsWith(matrix.os, 'windows')
+      shell: pwsh
+      run: .\bin\release\spaceguard_testapp.exe
 
-    # - name: Test run
-    #   if: startsWith(matrix.os, 'widows')
-    #   run: ./tests/bin/tests.exe
-    
+    - name: Run tests on macOS and Linux
+      if: ${{ !startsWith(matrix.os, 'windows') }}
+      run: ./bin/release/spaceguard_testapp

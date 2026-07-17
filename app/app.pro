@@ -30,7 +30,8 @@ RCC_DIR     = ../build/$${OUTPUT_DIR}/$${TARGET}
 INCLUDEPATH += \
 	../qtutils \
 	../cpputils \
-	../cpp-template-utils
+	../cpp-template-utils \
+	../thin_io/src
 
 ###################################################
 #                 SOURCES
@@ -39,16 +40,20 @@ INCLUDEPATH += \
 SOURCES += \
 	src/main.cpp \
 	src/mainwindow.cpp \
+	src/filesystem_access.cpp \
+	src/native_path.cpp \
 	src/snapshot.cpp
 
 ###################################################
 #                 LIBS
 ###################################################
 
-LIBS += -L$${DESTDIR} -lqtutils -lcpputils
+LIBS += -L$${DESTDIR} -lqtutils -lcpputils -lthin_io
 
 mac*|linux*|freebsd*{
-	PRE_TARGETDEPS += $${DESTDIR}/libcpputils.a
+	PRE_TARGETDEPS += \
+		$${DESTDIR}/libcpputils.a \
+		$${DESTDIR}/libthin_io.a
 }
 
 ###################################################
@@ -89,6 +94,8 @@ FORMS += \
 	src/mainwindow.ui
 
 HEADERS += \
+	src/filesystem_access.h \
 	src/mainwindow.h \
+	src/native_path.h \
 	src/settings.h \
 	src/snapshot.h

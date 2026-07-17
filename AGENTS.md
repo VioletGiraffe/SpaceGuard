@@ -14,8 +14,9 @@ The product-specific code is currently small and lives in `app/src/`:
 
 The current implementation is a prototype. Important planned improvements are trustworthy scan-error reporting,
 off-main-thread multithreaded scanning, explicit link/reparse handling, volume free-space measurements, allocated-size
-accounting, and progress/cancellation. Performance and memory consumption should be kept in mind but are not primary
-design drivers. Snapshot format versioning is not currently a priority.
+accounting, progress/cancellation, and an explicitly versioned replacement for the prototype snapshot format. Legacy
+prototype snapshots will not be supported. Performance and memory consumption should be kept in mind but are not
+primary design drivers.
 
 Windows is the primary platform. macOS and Linux support are desired.
 
@@ -34,6 +35,9 @@ Top-level components:
   `CExecutionQueue`; use these for background and multithreaded scan orchestration.
 - `qtutils/`: reusable Qt helpers, settings, widgets, dialogs, and platform integration.
 - `cpp-template-utils/`: header-only generic/template utilities used by the other components.
+- `tests/`: separate qmake test project; `tests/spaceguard_testapp/` is the Catch2 application for non-UI SpaceGuard
+  code. Tests must not be part of the main `SpaceGuard.pro` build. GitHub Actions must build and run the separate test
+  project on Windows, macOS, and Linux whenever tests are added or changed.
 
 The dependency directories above are Git submodules. Treat each as a separate repository and do not make incidental
 changes inside one while working on SpaceGuard. A task that changes a submodule should keep that submodule's diff
