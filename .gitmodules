@@ -7,3 +7,6 @@
 [submodule "qtutils"]
 	path = qtutils
 	url = https://github.com/VioletGiraffe/qtutils
+[submodule "thin_io"]
+	path = thin_io
+	url = https://github.com/VioletGiraffe/thin_io
