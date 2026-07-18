@@ -53,10 +53,13 @@ linux*|mac*|freebsd {
 SOURCES += \
 	../../app/src/filesystem_access.cpp \
 	../../app/src/native_path.cpp \
+	../../app/src/snapshot.cpp \
 	test_filesystem_access.cpp \
 	test_native_path.cpp \
+	test_snapshot.cpp \
 	tests_main.cpp
 
 HEADERS += \
 	../../app/src/filesystem_access.h \
-	../../app/src/native_path.h
+	../../app/src/native_path.h \
+	../../app/src/snapshot.h

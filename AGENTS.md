@@ -8,15 +8,16 @@ changes without repeating the same growth at every ancestor.
 
 The product-specific code is currently small and lives in `app/src/`:
 
-- `snapshot.{h,cpp}` owns the filesystem tree, recursive scan, comparison, and snapshot serialization.
-- `mainwindow.{h,cpp,ui}` owns the current manual save/load/compare workflow and result table.
-- Snapshot files use the `.spaceguard` extension and are serialized with `QDataStream` plus `qCompress`.
+- `snapshot.{h,cpp}` owns the factual native-name tree and validated, atomic snapshot persistence.
+- `mainwindow.{h,cpp,ui}` still contains the prototype scan/compare workflow and is awaiting migration to the new model.
+- Snapshot files use the `.spaceguard` extension and a versioned, platform-marked `QDataStream`/`qCompress` format
+  written through `QSaveFile`. Legacy prototype snapshots are rejected.
 
-The current implementation is a prototype. Important planned improvements are trustworthy scan-error reporting,
-off-main-thread multithreaded scanning, explicit link/reparse handling, volume free-space measurements, allocated-size
-accounting, progress/cancellation, and an explicitly versioned replacement for the prototype snapshot format. Legacy
-prototype snapshots will not be supported. Performance and memory consumption should be kept in mind but are not
-primary design drivers.
+The application is in a staged replacement of the prototype. The final snapshot model and persistence are present;
+the old UI intentionally does not have a temporary compatibility layer and will become buildable again when scanning,
+comparison, and workflow code adopt the new model. Remaining work includes trustworthy native scanning,
+off-main-thread multithreaded traversal, allocated-size/hard-link accounting, comparison, and progress/cancellation.
+Performance and memory consumption should be kept in mind but are not primary design drivers.
 
 Windows is the primary platform. macOS and Linux support are desired.
 
