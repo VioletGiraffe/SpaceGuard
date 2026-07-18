@@ -14,15 +14,15 @@ The product-specific code is currently small and lives in `app/src/`:
   failed, or canceled outcomes.
 - `snapshot_scan_runner.{h,cpp}` owns the scan thread and worker pool, nonblocking cancellation, generation-tagged
   immutable publication, and coalesced progress through a caller-owned execution queue.
-- `mainwindow.{h,cpp,ui}` still contains the prototype scan/compare workflow and is awaiting migration to the new model.
+- `mainwindow.{h,cpp,ui}` owns the create/compare/cancel workflow, UI-thread publication draining, snapshot file
+  dialogs, threshold-only recalculation, and qualified comparison presentation.
 - Snapshot files use the `.spaceguard` extension and a versioned, platform-marked `QDataStream`/`qCompress` format
   written through `QSaveFile`. Legacy prototype snapshots are rejected.
 
-The application is in a staged replacement of the prototype. The final snapshot model, persistence, deterministic
-accounting/comparison, native multithreaded scan, and asynchronous runner are present. The old UI intentionally does
-not have a temporary compatibility layer and will become buildable again when the workflow adopts the new model.
-Remaining work is UI integration. Performance and memory consumption should be kept in mind but are not primary
-design concerns at the current estimates.
+The prototype replacement is complete in source: the final snapshot model, persistence, deterministic
+accounting/comparison, native multithreaded scan, asynchronous runner, and UI workflow are integrated. Remaining work
+is persistence/comparison/workflow hardening and cross-platform UI inspection. Performance and memory consumption
+should be kept in mind but are not primary design concerns at the current estimates.
 
 Windows is the primary platform. macOS and Linux support are desired.
 

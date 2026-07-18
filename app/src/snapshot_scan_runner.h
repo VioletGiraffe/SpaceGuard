@@ -42,6 +42,7 @@ private:
 	void runScan(NativePath rootPath, uint64_t generation, const std::shared_ptr<RequestState>& request);
 	void enqueueProgress(uint64_t generation, const SnapshotScanProgress& progress);
 
+private:
 	FilesystemAccess& m_filesystem;
 	CExecutionQueue& m_publicationQueue;
 	SnapshotScanRunnerCallbacks m_callbacks;
@@ -50,6 +51,8 @@ private:
 	uint64_t m_lastGeneration = 0;
 	bool m_scanInProgress = false;
 	std::shared_ptr<RequestState> m_activeRequest;
+	// Keep these last and in this order: reverse member destruction stops the scan thread before the worker pool it may use,
+	// while both still have access to all runner state above.
 	std::unique_ptr<CWorkerThreadPool> m_workerPool;
 	CInterruptableThread m_scanThread{"SpaceGuard snapshot scan"};
 };
