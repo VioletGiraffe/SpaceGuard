@@ -1,10 +1,12 @@
 #include "snapshot.h"
+#include "snapshot_internal.h"
 
 #include <QDataStream>
 #include <QFile>
 #include <QSaveFile>
 #include <QtEndian>
 
+#include <algorithm>
 #include <limits>
 #include <utility>
 
@@ -551,6 +553,109 @@ bool isKnownPlatform(const uint8_t platform)
 		&& platform <= static_cast<uint8_t>(SnapshotPlatform::freebsd);
 }
 
+struct HardLinkEntry
+{
+	SnapshotEntry* entry;
+	NativePath path;
+};
+
+using HardLinkEntries = std::map<thin_io::entry_identity, std::vector<HardLinkEntry>, SnapshotInternal::EntryIdentityLess>;
+
+bool localCoverageIsComplete(const SnapshotEntry& entry)
+{
+	if (entry.attributes.kind != thin_io::entry_kind::directory)
+		return true;
+
+	return entry.traversalState == DirectoryTraversalState::completed
+		|| entry.traversalState == DirectoryTraversalState::link_boundary
+		|| entry.traversalState == DirectoryTraversalState::filesystem_boundary;
+}
+
+void initializeDerivedData(SnapshotEntry& entry, const NativePath& path, HardLinkEntries& hardLinkEntries)
+{
+	entry.derived = {};
+	entry.derived.localCoverageComplete = localCoverageIsComplete(entry);
+
+	if (entry.traversalState == DirectoryTraversalState::filesystem_boundary)
+	{
+		entry.derived.localAllocatedSize = 0;
+	}
+	else if (entry.metadata)
+	{
+		const bool isRegularFile = entry.attributes.kind == thin_io::entry_kind::regular_file;
+		if (isRegularFile && entry.metadata->identity)
+		{
+			hardLinkEntries[*entry.metadata->identity].push_back({&entry, path});
+		}
+		else if (!isRegularFile || entry.metadata->hardLinkCount == 1)
+		{
+			entry.derived.localAllocatedSize = entry.metadata->allocatedSize;
+		}
+	}
+
+	for (auto& [name, child] : entry.children)
+		initializeDerivedData(child, appendNativeName(path, name), hardLinkEntries);
+}
+
+bool hardLinkMetadataMatches(const SnapshotEntry& left, const SnapshotEntry& right)
+{
+	return left.attributes == right.attributes
+		&& left.metadata->logicalSize == right.metadata->logicalSize
+		&& left.metadata->allocatedSize == right.metadata->allocatedSize
+		&& left.metadata->hardLinkCount == right.metadata->hardLinkCount;
+}
+
+SnapshotHardLinkGroup deriveHardLinkGroup(const thin_io::entry_identity& identity, std::vector<HardLinkEntry>& entries)
+{
+	std::ranges::sort(entries, [](const HardLinkEntry& left, const HardLinkEntry& right) { return left.path < right.path; });
+
+	SnapshotHardLinkGroup group;
+	group.identity = identity;
+	group.presentationPath = entries.front().path;
+	group.allocatedSize = entries.front().entry->metadata->allocatedSize;
+	group.reportedLinkCount = entries.front().entry->metadata->hardLinkCount;
+	group.aliases.reserve(entries.size());
+
+	group.metadataConsistent = std::ranges::all_of(entries, [&entries](const HardLinkEntry& candidate) {
+		return hardLinkMetadataMatches(*entries.front().entry, *candidate.entry);
+	});
+	if (entries.size() > group.reportedLinkCount)
+		group.metadataConsistent = false;
+
+	group.allAliasesObserved = group.metadataConsistent && entries.size() == group.reportedLinkCount;
+	group.accountingExact = group.allAliasesObserved;
+
+	for (HardLinkEntry& hardLinkEntry : entries)
+	{
+		group.aliases.push_back(hardLinkEntry.path);
+		hardLinkEntry.entry->derived.localAllocatedSize = group.metadataConsistent ? std::optional<uint64_t>{0} : std::nullopt;
+	}
+	entries.front().entry->derived.localAllocatedSize = group.accountingExact
+		? std::optional<uint64_t>{group.allocatedSize}
+		: std::nullopt;
+	return group;
+}
+
+void aggregateDerivedData(SnapshotEntry& entry)
+{
+	entry.derived.subtreeCoverageComplete = entry.derived.localCoverageComplete;
+	entry.derived.allocationOverflow = false;
+	std::optional<uint64_t> subtreeAllocatedSize = entry.derived.localAllocatedSize;
+
+	for (auto& namedChild : entry.children)
+	{
+		SnapshotEntry& child = namedChild.second;
+		aggregateDerivedData(child);
+		entry.derived.subtreeCoverageComplete &= child.derived.subtreeCoverageComplete;
+		subtreeAllocatedSize = SnapshotInternal::addAllocatedSizes(
+			subtreeAllocatedSize, child.derived.subtreeAllocatedSize, entry.derived.allocationOverflow);
+	}
+
+	if (!entry.derived.subtreeCoverageComplete)
+		subtreeAllocatedSize.reset();
+	entry.derived.subtreeAllocatedSize = subtreeAllocatedSize;
+}
+
 } // namespace
 
 SnapshotPlatform currentSnapshotPlatform() noexcept
@@ -664,6 +769,7 @@ std::expected<Snapshot, SnapshotLoadError> Snapshot::load(const QString& path)
 	switch (deserializePayload(payload, snapshot))
 	{
 	case PayloadReadResult::success:
+		snapshot.rebuildDerivedData();
 		return snapshot;
 	case PayloadReadResult::truncated:
 		return std::unexpected{loadError(SnapshotLoadErrorCode::truncated)};
@@ -673,6 +779,21 @@ std::expected<Snapshot, SnapshotLoadError> Snapshot::load(const QString& path)
 		return std::unexpected{loadError(SnapshotLoadErrorCode::trailing_data)};
 	}
 	return std::unexpected{loadError(SnapshotLoadErrorCode::corrupt_data)};
+}
+
+void Snapshot::rebuildDerivedData()
+{
+	derivedDataAvailable = false;
+	hardLinkGroups.clear();
+
+	HardLinkEntries hardLinkEntries;
+	initializeDerivedData(root, rootPath, hardLinkEntries);
+	hardLinkGroups.reserve(hardLinkEntries.size());
+	for (auto& [identity, entries] : hardLinkEntries)
+		hardLinkGroups.push_back(deriveHardLinkGroup(identity, entries));
+
+	aggregateDerivedData(root);
+	derivedDataAvailable = true;
 }
 
 } // namespace SpaceGuard

@@ -8,16 +8,18 @@ changes without repeating the same growth at every ancestor.
 
 The product-specific code is currently small and lives in `app/src/`:
 
-- `snapshot.{h,cpp}` owns the factual native-name tree and validated, atomic snapshot persistence.
+- `snapshot.{h,cpp}` owns the factual native-name tree, derived accounting state, and validated atomic persistence.
+- `snapshot_comparison.{h,cpp}` owns exact-only tree comparison, root eligibility, and free-space reconciliation.
 - `mainwindow.{h,cpp,ui}` still contains the prototype scan/compare workflow and is awaiting migration to the new model.
 - Snapshot files use the `.spaceguard` extension and a versioned, platform-marked `QDataStream`/`qCompress` format
   written through `QSaveFile`. Legacy prototype snapshots are rejected.
 
 The application is in a staged replacement of the prototype. The final snapshot model and persistence are present;
-the old UI intentionally does not have a temporary compatibility layer and will become buildable again when scanning,
-comparison, and workflow code adopt the new model. Remaining work includes trustworthy native scanning,
-off-main-thread multithreaded traversal, allocated-size/hard-link accounting, comparison, and progress/cancellation.
-Performance and memory consumption should be kept in mind but are not primary design drivers.
+the old UI intentionally does not have a temporary compatibility layer and will become buildable again when the
+scanner and workflow adopt the new model. Deterministic allocated-size/hard-link accounting and typed comparison are
+implemented for constructed snapshots. Remaining work includes trustworthy native scanning, off-main-thread
+multithreaded traversal, UI integration, and progress/cancellation. Performance and memory consumption should be kept
+in mind but are not primary design drivers.
 
 Windows is the primary platform. macOS and Linux support are desired.
 
@@ -55,8 +57,8 @@ self-contained and reviewable.
   selected filesystem. Report the entry, but keep traversal within the chosen tree/volume.
 - A failed or incomplete directory enumeration must never be treated as an empty, authoritative subtree.
 - Build a scan result completely off-thread and publish it to the UI only when complete and still current.
-- Keep the existing in-memory tree and snapshot serialization until correctness work creates a concrete reason to
-  replace them.
+- Persist factual observations only; rebuild coverage, allocation totals, hard-link groups, and other derived state
+  after scanning or loading.
 
 ## Related reference project
 

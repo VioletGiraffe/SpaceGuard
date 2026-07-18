@@ -50,14 +50,28 @@ struct SnapshotEntryMetadata
 	[[nodiscard]] bool operator==(const SnapshotEntryMetadata&) const = default;
 };
 
+struct SnapshotEntryDerivedData
+{
+	bool localCoverageComplete = false;
+	bool subtreeCoverageComplete = false;
+	bool allocationOverflow = false;
+	std::optional<uint64_t> localAllocatedSize;
+	std::optional<uint64_t> subtreeAllocatedSize;
+};
+
 struct SnapshotEntry
 {
 	thin_io::entry_attributes attributes;
 	std::optional<SnapshotEntryMetadata> metadata;
 	DirectoryTraversalState traversalState = DirectoryTraversalState::not_directory;
 	std::map<NativeName, SnapshotEntry> children;
+	SnapshotEntryDerivedData derived;
 
-	[[nodiscard]] bool operator==(const SnapshotEntry&) const = default;
+	[[nodiscard]] bool operator==(const SnapshotEntry& other) const
+	{
+		return attributes == other.attributes && metadata == other.metadata
+			&& traversalState == other.traversalState && children == other.children;
+	}
 };
 
 struct SnapshotDiagnostic
@@ -67,6 +81,18 @@ struct SnapshotDiagnostic
 	thin_io::filesystem_error_code nativeErrorCode = 0;
 
 	[[nodiscard]] bool operator==(const SnapshotDiagnostic&) const = default;
+};
+
+struct SnapshotHardLinkGroup
+{
+	thin_io::entry_identity identity;
+	std::vector<NativePath> aliases;
+	NativePath presentationPath;
+	uint64_t allocatedSize = 0;
+	uint64_t reportedLinkCount = 0;
+	bool metadataConsistent = false;
+	bool allAliasesObserved = false;
+	bool accountingExact = false;
 };
 
 enum class SnapshotSaveErrorCode : uint8_t {
@@ -116,11 +142,22 @@ struct Snapshot
 	QDateTime scanStartedAtUtc;
 	QDateTime scanCompletedAtUtc;
 	std::vector<SnapshotDiagnostic> diagnostics;
+	std::vector<SnapshotHardLinkGroup> hardLinkGroups;
+	bool derivedDataAvailable = false;
 
 	[[nodiscard]] std::expected<void, SnapshotSaveError> save(const QString& path) const;
 	[[nodiscard]] static std::expected<Snapshot, SnapshotLoadError> load(const QString& path);
+	void rebuildDerivedData();
 
-	[[nodiscard]] bool operator==(const Snapshot&) const = default;
+	[[nodiscard]] bool operator==(const Snapshot& other) const
+	{
+		return rootPath == other.rootPath && root == other.root
+			&& filesystemSpaceAtStart == other.filesystemSpaceAtStart
+			&& filesystemSpaceAtCompletion == other.filesystemSpaceAtCompletion
+			&& scanStartedAtUtc == other.scanStartedAtUtc
+			&& scanCompletedAtUtc == other.scanCompletedAtUtc
+			&& diagnostics == other.diagnostics;
+	}
 };
 
 [[nodiscard]] SnapshotPlatform currentSnapshotPlatform() noexcept;

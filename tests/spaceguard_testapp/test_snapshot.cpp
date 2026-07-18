@@ -199,6 +199,7 @@ TEST_CASE("Snapshots preserve all factual fields", "[snapshot][persistence]")
 	const auto loaded = Snapshot::load(path);
 	REQUIRE(loaded);
 	CHECK(*loaded == original);
+	CHECK(loaded->derivedDataAvailable);
 
 	Snapshot withoutOptionalRootFacts = original;
 	withoutOptionalRootFacts.filesystemSpaceAtStart.reset();
@@ -209,6 +210,7 @@ TEST_CASE("Snapshots preserve all factual fields", "[snapshot][persistence]")
 	const auto optionalLoaded = Snapshot::load(optionalPath);
 	REQUIRE(optionalLoaded);
 	CHECK(*optionalLoaded == withoutOptionalRootFacts);
+	CHECK(optionalLoaded->derivedDataAvailable);
 }
 
 TEST_CASE("Snapshot serialization is deterministic", "[snapshot][persistence]")
