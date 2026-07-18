@@ -11,6 +11,8 @@
 #include <optional>
 #include <stdint.h>
 
+class CWorkerThreadPool;
+
 namespace SpaceGuard {
 
 struct SnapshotScanRunnerCallbacks
@@ -48,6 +50,7 @@ private:
 	uint64_t m_lastGeneration = 0;
 	bool m_scanInProgress = false;
 	std::shared_ptr<RequestState> m_activeRequest;
+	std::unique_ptr<CWorkerThreadPool> m_workerPool;
 	CInterruptableThread m_scanThread{"SpaceGuard snapshot scan"};
 };
 

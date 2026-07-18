@@ -10,19 +10,19 @@ The product-specific code is currently small and lives in `app/src/`:
 
 - `snapshot.{h,cpp}` owns the factual native-name tree, derived accounting state, and validated atomic persistence.
 - `snapshot_comparison.{h,cpp}` owns exact-only tree comparison, root eligibility, and free-space reconciliation.
-- `snapshot_scanner.{h,cpp}` owns the synchronous native scan and returns typed completed, failed, or canceled
-  outcomes.
-- `snapshot_scan_runner.{h,cpp}` owns off-thread scan lifetime, nonblocking cancellation, generation-tagged immutable
-  publication, and coalesced progress through a caller-owned execution queue.
+- `snapshot_scanner.{h,cpp}` owns the synchronous native scan API, single/parallel traversal, and typed completed,
+  failed, or canceled outcomes.
+- `snapshot_scan_runner.{h,cpp}` owns the scan thread and worker pool, nonblocking cancellation, generation-tagged
+  immutable publication, and coalesced progress through a caller-owned execution queue.
 - `mainwindow.{h,cpp,ui}` still contains the prototype scan/compare workflow and is awaiting migration to the new model.
 - Snapshot files use the `.spaceguard` extension and a versioned, platform-marked `QDataStream`/`qCompress` format
   written through `QSaveFile`. Legacy prototype snapshots are rejected.
 
 The application is in a staged replacement of the prototype. The final snapshot model, persistence, deterministic
-accounting/comparison, synchronous native scan, and asynchronous runner are present. The old UI intentionally does not
-have a temporary compatibility layer and will become buildable again when the workflow adopts the new model. Remaining
-work includes multithreaded traversal and UI integration. Performance and memory consumption should be kept in mind
-but are not primary design drivers.
+accounting/comparison, native multithreaded scan, and asynchronous runner are present. The old UI intentionally does
+not have a temporary compatibility layer and will become buildable again when the workflow adopts the new model.
+Remaining work is UI integration. Performance and memory consumption should be kept in mind but are not primary
+design concerns at the current estimates.
 
 Windows is the primary platform. macOS and Linux support are desired.
 

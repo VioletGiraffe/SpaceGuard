@@ -8,6 +8,7 @@
 
 namespace SpaceGuard {
 
+// Parallel scans may invoke different operations concurrently; implementations must support that usage.
 class FilesystemAccess
 {
 public:

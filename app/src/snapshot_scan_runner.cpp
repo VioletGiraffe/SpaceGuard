@@ -1,8 +1,12 @@
 #include "snapshot_scan_runner.h"
 
+#include "threading/cworkerthread.h"
+
+#include <algorithm>
 #include <assert.h>
 #include <atomic>
 #include <chrono>
+#include <thread>
 #include <utility>
 
 namespace SpaceGuard {
@@ -10,9 +14,20 @@ namespace {
 
 constexpr std::chrono::milliseconds ProgressPublicationInterval{100};
 
+uint32_t scanParticipantCount() noexcept
+{
+	return std::clamp(std::thread::hardware_concurrency(), 1u, 8u);
+}
+
+std::unique_ptr<CWorkerThreadPool> createScanWorkerPool()
+{
+	const uint32_t workerCount = scanParticipantCount() - 1;
+	return workerCount == 0 ? nullptr : std::make_unique<CWorkerThreadPool>(workerCount, "SpaceGuard snapshot scan");
+}
+
 int nextProgressQueueTag()
 {
-	static std::atomic_int nextTag{-2}; // -1 disables coalescing in CExecutionQueue.
+	static std::atomic_int nextTag{-2};
 	return nextTag.fetch_sub(1, std::memory_order_relaxed);
 }
 
@@ -28,7 +43,8 @@ SnapshotScanRunner::SnapshotScanRunner(
 	: m_filesystem{filesystem},
 	  m_publicationQueue{publicationQueue},
 	  m_callbacks{std::move(callbacks)},
-	  m_progressQueueTag{nextProgressQueueTag()}
+	  m_progressQueueTag{nextProgressQueueTag()},
+	  m_workerPool{createScanWorkerPool()}
 {
 	assert(m_callbacks.completed);
 }
@@ -106,7 +122,7 @@ void SnapshotScanRunner::runScan(
 	SnapshotScanResult result = SnapshotScanCanceled{};
 	try
 	{
-		result = scanSnapshot(rootPath, m_filesystem, request->canceled, reportProgress);
+		result = scanSnapshot(rootPath, m_filesystem, request->canceled, reportProgress, m_workerPool.get());
 	}
 	catch (...)
 	{

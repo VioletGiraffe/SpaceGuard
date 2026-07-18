@@ -9,6 +9,8 @@
 #include <stdint.h>
 #include <variant>
 
+class CWorkerThreadPool;
+
 namespace SpaceGuard {
 
 enum class SnapshotScanFailureCode : uint8_t {
@@ -51,6 +53,6 @@ using SnapshotScanProgressCallback = std::function<void(const SnapshotScanProgre
 
 [[nodiscard]] SnapshotScanResult scanSnapshot(
 	const NativePath& normalizedRootPath, FilesystemAccess& filesystem, const std::atomic_bool& canceled,
-	SnapshotScanProgressCallback progressCallback = {});
+	SnapshotScanProgressCallback progressCallback = {}, CWorkerThreadPool* workerPool = nullptr);
 
 } // namespace SpaceGuard

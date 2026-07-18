@@ -1,18 +1,27 @@
 #include "3rdparty/catch2/catch.hpp"
 
 #include "snapshot_scanner.h"
+#include "threading/cworkerthread.h"
 
 #include <QDir>
 #include <QFile>
 #include <QTemporaryDir>
 
 #include <algorithm>
+#include <array>
 #include <atomic>
+#include <chrono>
+#include <condition_variable>
 #include <filesystem>
 #include <fstream>
 #include <functional>
+#include <future>
 #include <map>
+#include <mutex>
+#include <random>
+#include <stdexcept>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -107,7 +116,10 @@ public:
 
 	thin_io::filesystem_result<std::vector<thin_io::directory_entry>> listDirectory(const NativePath& path) override
 	{
-		listedPaths.push_back(path);
+		{
+			std::lock_guard lock{historyMutex};
+			listedPaths.push_back(path);
+		}
 		const auto result = directories.at(path);
 		if (afterOperation)
 			afterOperation(FakeOperation::list_directory, path);
@@ -117,8 +129,12 @@ public:
 	thin_io::filesystem_result<thin_io::entry_metadata> getEntryMetadata(
 		const NativePath& path, const thin_io::link_behavior linkBehavior) override
 	{
-		CHECK(linkBehavior == thin_io::link_behavior::do_not_follow);
-		metadataPaths.push_back(path);
+		if (linkBehavior != thin_io::link_behavior::do_not_follow)
+			throw std::logic_error{"Scanner followed a link"};
+		{
+			std::lock_guard lock{historyMutex};
+			metadataPaths.push_back(path);
+		}
 		const auto result = metadataByPath.at(path);
 		if (afterOperation)
 			afterOperation(FakeOperation::entry_metadata, path);
@@ -136,6 +152,7 @@ public:
 
 private:
 	size_t spaceResultIndex = 0;
+	std::mutex historyMutex;
 };
 
 void configureRoot(FakeFilesystem& filesystem, std::vector<thin_io::directory_entry> entries = {})
@@ -146,6 +163,30 @@ void configureRoot(FakeFilesystem& filesystem, std::vector<thin_io::directory_en
 		thin_io::filesystem_space{100000, 50000, 45000, 7},
 		thin_io::filesystem_space{100000, 49000, 44000, 7}
 	};
+}
+
+void configureParallelTree(FakeFilesystem& filesystem)
+{
+	configureRoot(filesystem, {
+		listed("directory-a", thin_io::entry_kind::directory),
+		listed("directory-b", thin_io::entry_kind::directory),
+		listed("directory-c", thin_io::entry_kind::directory),
+		listed("missing-metadata", thin_io::entry_kind::regular_file)
+	});
+	const std::array directories{
+		std::pair{"directory-a", uint8_t{2}}, std::pair{"directory-b", uint8_t{3}}, std::pair{"directory-c", uint8_t{4}}
+	};
+	for (const auto& [name, seed] : directories)
+	{
+		const NativePath path = appendNativeName(rootPath(), nativeName(name));
+		filesystem.metadataByPath.emplace(path, metadata(thin_io::entry_kind::directory, 7, seed, 4096));
+		filesystem.directories.emplace(path, std::vector{listed("file", thin_io::entry_kind::regular_file)});
+		filesystem.metadataByPath.emplace(appendNativeName(path, nativeName("file")),
+			metadata(thin_io::entry_kind::regular_file, 7, static_cast<uint8_t>(seed + 10), seed * 10));
+	}
+	filesystem.directories[appendNativeName(rootPath(), nativeName("directory-c"))]
+		= error<std::vector<thin_io::directory_entry>>(21);
+	filesystem.metadataByPath.emplace(appendNativeName(rootPath(), nativeName("missing-metadata")), error<thin_io::entry_metadata>(20));
 }
 
 Snapshot completedSnapshot(SnapshotScanResult result)
@@ -388,8 +429,7 @@ TEST_CASE("Snapshot scanner cancellation never returns a partial snapshot", "[sn
 
 TEST_CASE("Snapshot scanner output is independent of enumeration order", "[snapshot][scanner]")
 {
-	auto configured = [](const bool reverse) {
-		FakeFilesystem filesystem;
+	auto configure = [](FakeFilesystem& filesystem, const bool reverse) {
 		std::vector entries{
 			listed("b", thin_io::entry_kind::regular_file),
 			listed("a", thin_io::entry_kind::regular_file)
@@ -399,10 +439,11 @@ TEST_CASE("Snapshot scanner output is independent of enumeration order", "[snaps
 		configureRoot(filesystem, std::move(entries));
 		filesystem.metadataByPath.emplace(appendNativeName(rootPath(), nativeName("a")), metadata(thin_io::entry_kind::regular_file, 7, 2, 8));
 		filesystem.metadataByPath.emplace(appendNativeName(rootPath(), nativeName("b")), metadata(thin_io::entry_kind::regular_file, 7, 3, 16));
-		return filesystem;
 	};
-	FakeFilesystem firstFilesystem = configured(false);
-	FakeFilesystem secondFilesystem = configured(true);
+	FakeFilesystem firstFilesystem;
+	FakeFilesystem secondFilesystem;
+	configure(firstFilesystem, false);
+	configure(secondFilesystem, true);
 	std::atomic_bool canceled = false;
 	Snapshot first = completedSnapshot(scanSnapshot(rootPath(), firstFilesystem, canceled));
 	Snapshot second = completedSnapshot(scanSnapshot(rootPath(), secondFilesystem, canceled));
@@ -410,6 +451,157 @@ TEST_CASE("Snapshot scanner output is independent of enumeration order", "[snaps
 	second.scanCompletedAtUtc = first.scanCompletedAtUtc;
 	CHECK(first == second);
 	CHECK(first.root.derived.subtreeAllocatedSize == second.root.derived.subtreeAllocatedSize);
+}
+
+TEST_CASE("Parallel snapshot scanning waits for discovered work and matches single-thread output", "[snapshot][scanner][parallel]")
+{
+	FakeFilesystem singleThreadFilesystem;
+	FakeFilesystem parallelFilesystem;
+	configureParallelTree(singleThreadFilesystem);
+	configureParallelTree(parallelFilesystem);
+	std::atomic_bool canceled = false;
+	Snapshot singleThreadSnapshot = completedSnapshot(scanSnapshot(rootPath(), singleThreadFilesystem, canceled));
+
+	std::mutex concurrencyMutex;
+	std::condition_variable concurrentDirectoryEntered;
+	int activeDirectoryCalls = 0;
+	int maximumConcurrentDirectoryCalls = 0;
+	bool releaseDirectoryCalls = false;
+	parallelFilesystem.afterOperation = [&](const FakeOperation operation, const NativePath& path) {
+		if (operation != FakeOperation::list_directory || path == rootPath())
+			return;
+		std::unique_lock lock{concurrencyMutex};
+		++activeDirectoryCalls;
+		maximumConcurrentDirectoryCalls = std::max(maximumConcurrentDirectoryCalls, activeDirectoryCalls);
+		if (activeDirectoryCalls >= 2)
+		{
+			releaseDirectoryCalls = true;
+			concurrentDirectoryEntered.notify_all();
+		}
+		else
+		{
+			concurrentDirectoryEntered.wait_for(lock, std::chrono::seconds{2}, [&releaseDirectoryCalls] { return releaseDirectoryCalls; });
+		}
+		--activeDirectoryCalls;
+	};
+
+	CWorkerThreadPool workerPool{3, "SpaceGuard scanner test"};
+	std::vector<SnapshotScanProgress> progress;
+	Snapshot parallelSnapshot = completedSnapshot(scanSnapshot(rootPath(), parallelFilesystem, canceled,
+		[&progress](const SnapshotScanProgress& value) { progress.push_back(value); }, &workerPool));
+	CHECK(maximumConcurrentDirectoryCalls >= 2);
+	REQUIRE_FALSE(progress.empty());
+	for (size_t i = 1; i < progress.size(); ++i)
+	{
+		CHECK(progress[i].directoriesCompleted >= progress[i - 1].directoriesCompleted);
+		CHECK(progress[i].entriesDiscovered >= progress[i - 1].entriesDiscovered);
+		CHECK(progress[i].issues >= progress[i - 1].issues);
+	}
+	CHECK(progress.back() == (SnapshotScanProgress{4, 6, 2}));
+
+	parallelSnapshot.scanStartedAtUtc = singleThreadSnapshot.scanStartedAtUtc;
+	parallelSnapshot.scanCompletedAtUtc = singleThreadSnapshot.scanCompletedAtUtc;
+	CHECK(parallelSnapshot == singleThreadSnapshot);
+	CHECK(parallelSnapshot.root.derived.subtreeAllocatedSize == singleThreadSnapshot.root.derived.subtreeAllocatedSize);
+}
+
+TEST_CASE("Parallel snapshot scanning cancels without stranding idle workers", "[snapshot][scanner][parallel]")
+{
+	FakeFilesystem filesystem;
+	configureParallelTree(filesystem);
+	const NativePath blockedPath = appendNativeName(rootPath(), nativeName("directory-a"));
+	std::mutex blockMutex;
+	std::condition_variable blockCondition;
+	bool blocked = false;
+	bool released = false;
+	filesystem.afterOperation = [&](const FakeOperation operation, const NativePath& path) {
+		if (operation != FakeOperation::list_directory || path != blockedPath)
+			return;
+		std::unique_lock lock{blockMutex};
+		blocked = true;
+		blockCondition.notify_all();
+		blockCondition.wait(lock, [&released] { return released; });
+	};
+
+	std::atomic_bool canceled = false;
+	CWorkerThreadPool workerPool{3, "SpaceGuard scanner cancellation test"};
+	auto scan = std::async(std::launch::async, [&] { return scanSnapshot(rootPath(), filesystem, canceled, {}, &workerPool); });
+	bool reachedBlock = false;
+	{
+		std::unique_lock lock{blockMutex};
+		reachedBlock = blockCondition.wait_for(lock, std::chrono::seconds{2}, [&blocked] { return blocked; });
+		canceled.store(true, std::memory_order_relaxed);
+		released = true;
+		blockCondition.notify_all();
+	}
+	REQUIRE(reachedBlock);
+	REQUIRE(scan.wait_for(std::chrono::seconds{2}) == std::future_status::ready);
+	CHECK(std::holds_alternative<SnapshotScanCanceled>(scan.get()));
+}
+
+TEST_CASE("Parallel snapshot scanning cancels before newly discovered directories are published", "[snapshot][scanner][parallel]")
+{
+	FakeFilesystem filesystem;
+	configureParallelTree(filesystem);
+	std::atomic_bool canceled = false;
+	CWorkerThreadPool workerPool{3, "SpaceGuard scanner publication cancellation test"};
+
+	const SnapshotScanResult result = scanSnapshot(rootPath(), filesystem, canceled,
+		[&canceled](const SnapshotScanProgress& progress) {
+			if (progress.entriesDiscovered > 0)
+				canceled.store(true, std::memory_order_relaxed);
+		}, &workerPool);
+	CHECK(std::holds_alternative<SnapshotScanCanceled>(result));
+	CHECK(filesystem.listedPaths.size() == 1);
+}
+
+TEST_CASE("Parallel snapshot scanning contains worker exceptions without deadlock", "[snapshot][scanner][parallel]")
+{
+	FakeFilesystem filesystem;
+	configureParallelTree(filesystem);
+	const NativePath throwingPath = appendNativeName(rootPath(), nativeName("directory-b"));
+	filesystem.afterOperation = [&throwingPath](const FakeOperation operation, const NativePath& path) {
+		if (operation == FakeOperation::list_directory && path == throwingPath)
+			throw std::runtime_error{"Injected directory failure"};
+	};
+
+	std::atomic_bool canceled = false;
+	CWorkerThreadPool workerPool{3, "SpaceGuard scanner exception test"};
+	auto scan = std::async(std::launch::async, [&] { return scanSnapshot(rootPath(), filesystem, canceled, {}, &workerPool); });
+	REQUIRE(scan.wait_for(std::chrono::seconds{2}) == std::future_status::ready);
+	const SnapshotScanResult result = scan.get();
+	const auto* failure = std::get_if<SnapshotScanFailure>(&result);
+	REQUIRE(failure);
+	CHECK(failure->code == SnapshotScanFailureCode::unexpected_error);
+}
+
+TEST_CASE("Parallel snapshot output is deterministic across enumeration and scheduling order", "[snapshot][scanner][parallel]")
+{
+	FakeFilesystem referenceFilesystem;
+	configureParallelTree(referenceFilesystem);
+	std::atomic_bool canceled = false;
+	Snapshot reference = completedSnapshot(scanSnapshot(rootPath(), referenceFilesystem, canceled));
+	CWorkerThreadPool workerPool{3, "SpaceGuard scanner determinism test"};
+
+	for (int run = 0; run < 8; ++run)
+	{
+		FakeFilesystem filesystem;
+		configureParallelTree(filesystem);
+		std::mt19937 random{static_cast<uint32_t>(run + 1)};
+		auto& rootEntries = *filesystem.directories.at(rootPath());
+		std::shuffle(rootEntries.begin(), rootEntries.end(), random);
+		filesystem.afterOperation = [run](const FakeOperation operation, const NativePath& path) {
+			const int yields = (run + static_cast<int>(path.size()) + static_cast<int>(operation)) % 4;
+			for (int i = 0; i < yields; ++i)
+				std::this_thread::yield();
+		};
+
+		Snapshot snapshot = completedSnapshot(scanSnapshot(rootPath(), filesystem, canceled, {}, &workerPool));
+		snapshot.scanStartedAtUtc = reference.scanStartedAtUtc;
+		snapshot.scanCompletedAtUtc = reference.scanCompletedAtUtc;
+		CHECK(snapshot == reference);
+		CHECK(snapshot.root.derived.subtreeAllocatedSize == reference.root.derived.subtreeAllocatedSize);
+	}
 }
 
 TEST_CASE("Snapshot scanner progress is monotonic", "[snapshot][scanner]")

@@ -1,8 +1,15 @@
 #include "snapshot_scanner.h"
 
+#include "threading/cworkerthread.h"
+
 #include <QDateTime>
 
+#include <algorithm>
 #include <assert.h>
+#include <condition_variable>
+#include <cstddef>
+#include <deque>
+#include <mutex>
 #include <utility>
 
 namespace SpaceGuard {
@@ -28,8 +35,9 @@ void markMetadataUnavailable(SnapshotEntry& entry)
 class Scanner
 {
 public:
-	Scanner(FilesystemAccess& filesystem, const std::atomic_bool& canceled, SnapshotScanProgressCallback progressCallback)
-		: m_filesystem{filesystem}, m_canceled{canceled}, m_progressCallback{std::move(progressCallback)}
+	Scanner(FilesystemAccess& filesystem, const std::atomic_bool& canceled, SnapshotScanProgressCallback progressCallback,
+		CWorkerThreadPool* workerPool)
+		: m_filesystem{filesystem}, m_canceled{canceled}, m_progressCallback{std::move(progressCallback)}, m_workerPool{workerPool}
 	{
 	}
 
@@ -69,7 +77,7 @@ public:
 		if (!m_rootFilesystemIdentity)
 			m_rootFilesystemIdentity = startSpace->identity;
 
-		if (const auto rootFailure = scanDirectory(rootPath, m_snapshot.root, true))
+		if (const auto rootFailure = scanDirectories(rootPath))
 			return *rootFailure;
 		if (m_canceled.load(std::memory_order_relaxed))
 			return SnapshotScanCanceled{};
@@ -89,25 +97,106 @@ public:
 		}
 
 		m_snapshot.scanCompletedAtUtc = QDateTime::currentDateTimeUtc();
+		std::ranges::sort(m_snapshot.diagnostics, [](const SnapshotDiagnostic& left, const SnapshotDiagnostic& right) {
+			const int pathOrder = left.path.compare(right.path);
+			if (pathOrder != 0)
+				return pathOrder < 0;
+			if (left.operation != right.operation)
+				return left.operation < right.operation;
+			return left.nativeErrorCode < right.nativeErrorCode;
+		});
 		m_snapshot.rebuildDerivedData();
 		return std::move(m_snapshot);
 	}
 
 private:
-	std::optional<SnapshotScanFailure> scanDirectory(const NativePath& path, SnapshotEntry& directory, const bool isRoot)
+	struct DirectoryWork
+	{
+		NativePath path;
+		SnapshotEntry* entry = nullptr;
+		bool isRoot = false;
+	};
+
+	std::optional<SnapshotScanFailure> scanDirectories(const NativePath& rootPath)
+	{
+		m_pendingDirectories.push_back({rootPath, &m_snapshot.root, true});
+		m_outstandingDirectories = 1;
+
+		if (m_workerPool)
+		{
+			const std::size_t participantCount = m_workerPool->maxWorkersCount() + 1;
+			m_workerPool->parallelFor(participantCount, [this](const std::size_t) noexcept { processDirectories(); });
+		}
+		else
+		{
+			processDirectories();
+		}
+
+		assert(m_outstandingDirectories == 0);
+		assert(m_pendingDirectories.empty());
+		if (m_canceled.load(std::memory_order_relaxed))
+			return {};
+		if (m_unexpectedError)
+			return scanFailure(SnapshotScanFailureCode::unexpected_error, rootPath);
+		return std::move(m_fatalFailure);
+	}
+
+	void processDirectories() noexcept
+	{
+		for (;;)
+		{
+			DirectoryWork directory;
+			{
+				std::unique_lock lock{m_workMutex};
+				// An empty queue with outstanding work implies an active participant. Its completion notification
+				// wakes idle participants after the current native call, which is also the cancellation latency bound.
+				m_workChanged.wait(lock, [this] {
+					return m_canceled.load(std::memory_order_relaxed) || m_unexpectedError || m_fatalFailure
+						|| m_outstandingDirectories == 0 || !m_pendingDirectories.empty();
+				});
+				if (m_canceled.load(std::memory_order_relaxed))
+				{
+					discardPendingDirectoriesLocked();
+					m_workChanged.notify_all();
+					return;
+				}
+				if (m_unexpectedError || m_fatalFailure || m_outstandingDirectories == 0)
+					return;
+
+				directory = std::move(m_pendingDirectories.front());
+				m_pendingDirectories.pop_front();
+			}
+
+			std::vector<DirectoryWork> discoveredDirectories;
+			std::optional<SnapshotScanFailure> failure;
+			bool unexpectedError = false;
+			try
+			{
+				failure = scanDirectory(directory, discoveredDirectories);
+			}
+			catch (...)
+			{
+				unexpectedError = true;
+			}
+			finishDirectory(std::move(discoveredDirectories), std::move(failure), unexpectedError);
+		}
+	}
+
+	std::optional<SnapshotScanFailure> scanDirectory(
+		const DirectoryWork& work, std::vector<DirectoryWork>& discoveredDirectories)
 	{
 		if (m_canceled.load(std::memory_order_relaxed))
 			return {};
 
-		const auto entries = m_filesystem.listDirectory(path);
+		const auto entries = m_filesystem.listDirectory(work.path);
 		if (m_canceled.load(std::memory_order_relaxed))
 			return {};
 		if (!entries)
 		{
-			if (isRoot)
-				return scanFailure(SnapshotScanFailureCode::root_enumeration_unavailable, path, entries.error().native_code);
-			directory.traversalState = DirectoryTraversalState::enumeration_failed;
-			recordDiagnostic(path, SnapshotOperation::directory_enumeration, entries.error().native_code);
+			if (work.isRoot)
+				return scanFailure(SnapshotScanFailureCode::root_enumeration_unavailable, work.path, entries.error().native_code);
+			work.entry->traversalState = DirectoryTraversalState::enumeration_failed;
+			recordDiagnostic(work.path, SnapshotOperation::directory_enumeration, entries.error().native_code);
 			completeDirectory();
 			return {};
 		}
@@ -118,18 +207,17 @@ private:
 				return {};
 			SnapshotEntry child;
 			child.attributes = listedEntry.attributes;
-			const bool inserted = directory.children.emplace(nativeNameFromThinIo(listedEntry.name), std::move(child)).second;
+			const bool inserted = work.entry->children.emplace(nativeNameFromThinIo(listedEntry.name), std::move(child)).second;
 			assert(inserted);
 			(void)inserted;
 		}
-		m_progress.entriesDiscovered += static_cast<uint64_t>(entries->size());
-		reportProgress();
+		discoverEntries(static_cast<uint64_t>(entries->size()));
 
-		for (auto& [name, child] : directory.children)
+		for (auto& [name, child] : work.entry->children)
 		{
 			if (m_canceled.load(std::memory_order_relaxed))
 				return {};
-			const NativePath childPath = appendNativeName(path, name);
+			NativePath childPath = appendNativeName(work.path, name);
 			const auto metadata = m_filesystem.getEntryMetadata(childPath, thin_io::link_behavior::do_not_follow);
 			if (m_canceled.load(std::memory_order_relaxed))
 				return {};
@@ -162,33 +250,82 @@ private:
 			}
 			if (m_canceled.load(std::memory_order_relaxed))
 				return {};
-			if (const auto childFailure = scanDirectory(childPath, child, false))
-				return childFailure;
+			discoveredDirectories.push_back({std::move(childPath), &child, false});
 		}
 
 		if (!m_canceled.load(std::memory_order_relaxed))
 		{
-			directory.traversalState = DirectoryTraversalState::completed;
+			work.entry->traversalState = DirectoryTraversalState::completed;
 			completeDirectory();
 		}
 		return {};
 	}
 
+	void finishDirectory(std::vector<DirectoryWork> discoveredDirectories,
+		std::optional<SnapshotScanFailure> failure, const bool unexpectedError) noexcept
+	{
+		{
+			std::lock_guard lock{m_workMutex};
+			try
+			{
+				if (unexpectedError)
+					m_unexpectedError = true;
+				else if (failure && !m_fatalFailure)
+					m_fatalFailure = std::move(failure);
+
+				if (!m_canceled.load(std::memory_order_relaxed) && !m_unexpectedError && !m_fatalFailure)
+				{
+					for (DirectoryWork& discovered : discoveredDirectories)
+					{
+						m_pendingDirectories.push_back(std::move(discovered));
+						++m_outstandingDirectories;
+					}
+				}
+			}
+			catch (...)
+			{
+				m_unexpectedError = true;
+			}
+
+			if (m_canceled.load(std::memory_order_relaxed) || m_unexpectedError || m_fatalFailure)
+				discardPendingDirectoriesLocked();
+			assert(m_outstandingDirectories > 0);
+			--m_outstandingDirectories;
+		}
+		m_workChanged.notify_all();
+	}
+
+	void discardPendingDirectoriesLocked() noexcept
+	{
+		assert(m_outstandingDirectories >= m_pendingDirectories.size());
+		m_outstandingDirectories -= m_pendingDirectories.size();
+		m_pendingDirectories.clear();
+	}
+
 	void recordDiagnostic(const NativePath& path, const SnapshotOperation operation,
 		const std::optional<thin_io::filesystem_error_code> nativeErrorCode)
 	{
+		std::lock_guard lock{m_resultMutex};
 		m_snapshot.diagnostics.push_back({path, operation, nativeErrorCode});
 		++m_progress.issues;
-		reportProgress();
+		reportProgressLocked();
+	}
+
+	void discoverEntries(const uint64_t count)
+	{
+		std::lock_guard lock{m_resultMutex};
+		m_progress.entriesDiscovered += count;
+		reportProgressLocked();
 	}
 
 	void completeDirectory()
 	{
+		std::lock_guard lock{m_resultMutex};
 		++m_progress.directoriesCompleted;
-		reportProgress();
+		reportProgressLocked();
 	}
 
-	void reportProgress() const
+	void reportProgressLocked() const
 	{
 		if (m_progressCallback)
 			m_progressCallback(m_progress);
@@ -200,15 +337,23 @@ private:
 	Snapshot m_snapshot;
 	SnapshotScanProgress m_progress;
 	std::optional<thin_io::filesystem_identity> m_rootFilesystemIdentity;
+	CWorkerThreadPool* m_workerPool;
+	std::mutex m_workMutex;
+	std::condition_variable m_workChanged;
+	std::deque<DirectoryWork> m_pendingDirectories;
+	std::size_t m_outstandingDirectories = 0;
+	std::optional<SnapshotScanFailure> m_fatalFailure;
+	bool m_unexpectedError = false;
+	std::mutex m_resultMutex;
 };
 
 } // namespace
 
 SnapshotScanResult scanSnapshot(
 	const NativePath& normalizedRootPath, FilesystemAccess& filesystem, const std::atomic_bool& canceled,
-	SnapshotScanProgressCallback progressCallback)
+	SnapshotScanProgressCallback progressCallback, CWorkerThreadPool* workerPool)
 {
-	return Scanner{filesystem, canceled, std::move(progressCallback)}.scan(normalizedRootPath);
+	return Scanner{filesystem, canceled, std::move(progressCallback), workerPool}.scan(normalizedRootPath);
 }
 
 } // namespace SpaceGuard
