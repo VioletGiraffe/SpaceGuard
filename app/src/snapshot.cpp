@@ -270,7 +270,7 @@ bool isValidEntry(const SnapshotEntry& entry, const uint32_t depth, uint64_t& to
 		if (!entry.attributes.is_link || !entry.children.empty())
 			return false;
 		break;
-	case DirectoryTraversalState::filesystem_boundary:
+	case DirectoryTraversalState::mount_boundary:
 		if (!entry.metadata || entry.attributes.is_link || !entry.metadata->identity || !entry.children.empty())
 			return false;
 		break;
@@ -288,7 +288,7 @@ bool isValidEntry(const SnapshotEntry& entry, const uint32_t depth, uint64_t& to
 
 bool isValidSpace(const thin_io::filesystem_space& space)
 {
-	return space.available <= space.free;
+	return space.available <= space.free && space.available <= space.capacity;
 }
 
 bool identitiesAgree(const Snapshot& snapshot)
@@ -364,7 +364,7 @@ bool readEntry(QDataStream& stream, SnapshotEntry& entry, const uint32_t depth, 
 	if (!readAttributes(stream, entry.attributes)
 		|| !readOptionalEntryMetadata(stream, entry.metadata)
 		|| !readByte(stream, traversalState)
-		|| traversalState > static_cast<uint8_t>(DirectoryTraversalState::filesystem_boundary))
+		|| traversalState > static_cast<uint8_t>(DirectoryTraversalState::mount_boundary))
 		return false;
 
 	entry.traversalState = static_cast<DirectoryTraversalState>(traversalState);
@@ -564,7 +564,7 @@ bool localCoverageIsComplete(const SnapshotEntry& entry)
 
 	return entry.traversalState == DirectoryTraversalState::completed
 		|| entry.traversalState == DirectoryTraversalState::link_boundary
-		|| entry.traversalState == DirectoryTraversalState::filesystem_boundary;
+		|| entry.traversalState == DirectoryTraversalState::mount_boundary;
 }
 
 void initializeDerivedData(SnapshotEntry& entry, const NativePath& path, HardLinkEntries& hardLinkEntries)
@@ -572,7 +572,7 @@ void initializeDerivedData(SnapshotEntry& entry, const NativePath& path, HardLin
 	entry.derived = {};
 	entry.derived.localCoverageComplete = localCoverageIsComplete(entry);
 
-	if (entry.traversalState == DirectoryTraversalState::filesystem_boundary)
+	if (entry.traversalState == DirectoryTraversalState::mount_boundary)
 	{
 		entry.derived.localAllocatedSize = 0;
 	}

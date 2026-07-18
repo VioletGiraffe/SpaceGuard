@@ -175,10 +175,10 @@ TEST_CASE("Derived accounting rejects allocated-size overflow", "[snapshot][acco
 	CHECK_FALSE(snapshot.root.derived.subtreeAllocatedSize);
 }
 
-TEST_CASE("Derived accounting excludes filesystem boundaries but includes link entries", "[snapshot][accounting]")
+TEST_CASE("Derived accounting excludes mount boundaries but includes link entries", "[snapshot][accounting]")
 {
 	Snapshot snapshot = makeSnapshot();
-	SnapshotEntry mount = directory(DirectoryTraversalState::filesystem_boundary);
+	SnapshotEntry mount = directory(DirectoryTraversalState::mount_boundary);
 	mount.metadata = entryMetadata(500, 1, entryIdentity(99, 1));
 	SnapshotEntry link = directory(DirectoryTraversalState::link_boundary);
 	link.attributes.is_link = true;

@@ -1,6 +1,7 @@
 #include "3rdparty/catch2/catch.hpp"
 
 #include "filesystem_access.h"
+#include "snapshot_comparison.h"
 #include "snapshot_scanner.h"
 #include "test_filesystem_access_adapter.h"
 #include "threading/cworkerthread.h"
@@ -84,7 +85,9 @@ thin_io::entry_attributes attributes(const thin_io::entry_kind kind, const bool 
 thin_io::entry_metadata metadata(const thin_io::entry_kind kind, const uint64_t filesystem,
 	const uint8_t seed, const uint64_t allocatedSize = 0, const uint64_t hardLinkCount = 1, const bool isLink = false)
 {
-	return {attributes(kind, isLink), allocatedSize, allocatedSize, hardLinkCount, identity(filesystem, seed)};
+	thin_io::entry_metadata result{attributes(kind, isLink), allocatedSize, allocatedSize, hardLinkCount, identity(filesystem, seed)};
+	result.mount_id = filesystem;
+	return result;
 }
 
 thin_io::directory_entry listed(const char* name, const thin_io::entry_kind kind, const bool isLink = false)
@@ -336,29 +339,37 @@ TEST_CASE("Snapshot scanner preserves every discovered kind and traverses only o
 	CHECK(std::ranges::find(filesystem.listedPaths, appendNativeName(rootPath(), nativeName("link"))) == filesystem.listedPaths.end());
 }
 
-TEST_CASE("Snapshot scanner contains descendant failures and filesystem boundaries", "[snapshot][scanner]")
+TEST_CASE("Snapshot scanner contains descendant failures and mount boundaries", "[snapshot][scanner]")
 {
 	FakeFilesystem filesystem;
 	configureRoot(filesystem, {
 		listed("failed-list", thin_io::entry_kind::directory),
 		listed("failed-metadata", thin_io::entry_kind::directory),
-		listed("boundary", thin_io::entry_kind::directory),
+		listed("filesystem-boundary", thin_io::entry_kind::directory),
+		listed("bind-boundary", thin_io::entry_kind::directory),
 		listed("sibling", thin_io::entry_kind::regular_file)
 	});
 	const NativePath failedListPath = appendNativeName(rootPath(), nativeName("failed-list"));
 	const NativePath failedMetadataPath = appendNativeName(rootPath(), nativeName("failed-metadata"));
-	const NativePath boundaryPath = appendNativeName(rootPath(), nativeName("boundary"));
+	const NativePath filesystemBoundaryPath = appendNativeName(rootPath(), nativeName("filesystem-boundary"));
+	const NativePath bindBoundaryPath = appendNativeName(rootPath(), nativeName("bind-boundary"));
 	filesystem.metadataByPath.emplace(failedListPath, metadata(thin_io::entry_kind::directory, 7, 2));
 	filesystem.directories.emplace(failedListPath, error<std::vector<thin_io::directory_entry>>(10));
 	filesystem.metadataByPath.emplace(failedMetadataPath, error<thin_io::entry_metadata>(11));
-	filesystem.metadataByPath.emplace(boundaryPath, metadata(thin_io::entry_kind::directory, 8, 3));
+	filesystem.metadataByPath.emplace(filesystemBoundaryPath, metadata(thin_io::entry_kind::directory, 8, 3));
+	thin_io::entry_metadata bindMetadata = metadata(thin_io::entry_kind::directory, 7, 4);
+	bindMetadata.mount_id = 8;
+	filesystem.metadataByPath.emplace(bindBoundaryPath, std::move(bindMetadata));
 	filesystem.metadataByPath.emplace(appendNativeName(rootPath(), nativeName("sibling")), metadata(thin_io::entry_kind::regular_file, 7, 4, 32));
 	std::atomic_bool canceled = false;
 
 	const Snapshot snapshot = completedSnapshot(scanSnapshot(rootPath(), filesystem, canceled));
 	CHECK(snapshot.root.children.at(nativeName("failed-list")).traversalState == DirectoryTraversalState::enumeration_failed);
 	CHECK(snapshot.root.children.at(nativeName("failed-metadata")).traversalState == DirectoryTraversalState::metadata_unavailable);
-	CHECK(snapshot.root.children.at(nativeName("boundary")).traversalState == DirectoryTraversalState::filesystem_boundary);
+	CHECK(snapshot.root.children.at(nativeName("filesystem-boundary")).traversalState == DirectoryTraversalState::mount_boundary);
+	CHECK(snapshot.root.children.at(nativeName("bind-boundary")).traversalState == DirectoryTraversalState::mount_boundary);
+	CHECK(std::ranges::find(filesystem.listedPaths, filesystemBoundaryPath) == filesystem.listedPaths.end());
+	CHECK(std::ranges::find(filesystem.listedPaths, bindBoundaryPath) == filesystem.listedPaths.end());
 	CHECK(snapshot.root.children.at(nativeName("sibling")).metadata.has_value());
 	CHECK(snapshot.diagnostics.size() == 2);
 	CHECK_FALSE(snapshot.root.derived.subtreeCoverageComplete);
@@ -462,7 +473,7 @@ TEST_CASE("Snapshot scanner output is independent of enumeration order", "[snaps
 	CHECK(first.root.derived.subtreeAllocatedSize == second.root.derived.subtreeAllocatedSize);
 }
 
-TEST_CASE("Parallel snapshot scanning waits for discovered work and matches single-thread output", "[snapshot][scanner][parallel]")
+TEST_CASE("Worker-pool snapshot scanning waits for discovered work and matches one-participant output", "[snapshot][scanner][parallel]")
 {
 	FakeFilesystem singleThreadFilesystem;
 	FakeFilesystem parallelFilesystem;
@@ -686,10 +697,12 @@ TEST_CASE("Snapshot scanner handles native real-filesystem names, nesting, hard 
 }
 
 #ifndef _WIN32
-TEST_CASE("Snapshot scanner preserves non-UTF-8 POSIX names", "[snapshot][scanner][integration]")
+TEST_CASE("POSIX native names survive scanning, persistence, and comparison", "[snapshot][scanner][integration]")
 {
 	QTemporaryDir directory;
 	REQUIRE(directory.isValid());
+	QTemporaryDir snapshotDirectory;
+	REQUIRE(snapshotDirectory.isValid());
 	const auto nativeRoot = normalizedAbsoluteNativePath(directory.path());
 	REQUIRE(nativeRoot);
 	NativeName rawName{"raw-"};
@@ -703,10 +716,29 @@ TEST_CASE("Snapshot scanner preserves non-UTF-8 POSIX names", "[snapshot][scanne
 	}
 	file << "data";
 	file.close();
+	REQUIRE(file.good());
 
 	FilesystemAccess filesystem;
 	std::atomic_bool canceled = false;
-	const Snapshot snapshot = completedSnapshot(scanSnapshot(*nativeRoot, filesystem, canceled));
-	CHECK(snapshot.root.children.contains(rawName));
+	const Snapshot baseline = completedSnapshot(scanSnapshot(*nativeRoot, filesystem, canceled));
+	CHECK(baseline.root.children.contains(rawName));
+	const QString snapshotPath = snapshotDirectory.filePath("native-name.spaceguard");
+	REQUIRE(baseline.save(snapshotPath));
+	const auto loaded = Snapshot::load(snapshotPath);
+	REQUIRE(loaded);
+	CHECK(loaded->root.children.contains(rawName));
+
+	std::ofstream expandedFile{filesystemPath(rawPath), std::ios::binary | std::ios::app};
+	REQUIRE(expandedFile.good());
+	const std::string addedContents(1024 * 1024, 'x');
+	expandedFile.write(addedContents.data(), static_cast<std::streamsize>(addedContents.size()));
+	expandedFile.close();
+	REQUIRE(expandedFile.good());
+
+	const Snapshot current = completedSnapshot(scanSnapshot(*nativeRoot, filesystem, canceled));
+	const auto comparison = compareSnapshots(*loaded, current, 1);
+	REQUIRE(comparison);
+	REQUIRE(comparison->changes.size() == 1);
+	CHECK(comparison->changes.front().path == rawPath);
 }
 #endif

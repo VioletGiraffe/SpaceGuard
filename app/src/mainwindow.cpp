@@ -557,13 +557,13 @@ void MainWindow::openTableItem(const QTableWidgetItem* item)
 #ifdef _WIN32
 	started = QProcess::startDetached("explorer.exe", {"/select," + QDir::toNativeSeparators(path)});
 #elif defined(__APPLE__)
-	started = QProcess::startDetached("/usr/bin/open", {"-R", nativePathForDisplay(path)});
+	started = QProcess::startDetached("/usr/bin/open", {"-R", QString::fromLatin1(nativePathFileUrl(path))});
 #elif defined(__linux__)
-	const QString url = QUrl::fromLocalFile(nativePathForDisplay(path)).toString(QUrl::FullyEncoded);
+	const QString url = QString::fromLatin1(nativePathFileUrl(path));
 	started = QProcess::startDetached("dbus-send", {"--session", "--dest=org.freedesktop.FileManager1", "--type=method_call",
 		"/org/freedesktop/FileManager1", "org.freedesktop.FileManager1.ShowItems", "array:string:" + url, "string:"});
 #else
-	started = QDesktopServices::openUrl(QUrl::fromLocalFile(nativePathForDisplay(path)));
+	started = QDesktopServices::openUrl(QUrl::fromEncoded(nativePathFileUrl(path)));
 #endif
 	if (!started)
 		m_ui->scanStatusLabel->setText("Could not open " + nativePathForDisplay(path));

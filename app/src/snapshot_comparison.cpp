@@ -216,7 +216,7 @@ bool childrenAreAuthoritative(const ComparisonSide& side)
 		return true;
 	return side.entry->traversalState == DirectoryTraversalState::completed
 		|| side.entry->traversalState == DirectoryTraversalState::link_boundary
-		|| side.entry->traversalState == DirectoryTraversalState::filesystem_boundary;
+		|| side.entry->traversalState == DirectoryTraversalState::mount_boundary;
 }
 
 bool allocationOverflowed(const ComparisonSide& side, const NativePath& path)

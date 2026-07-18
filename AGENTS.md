@@ -20,9 +20,9 @@ The product-specific code is currently small and lives in `app/src/`:
   written through `QSaveFile`. Legacy prototype snapshots are rejected.
 
 The prototype replacement is complete in source: the final snapshot model, persistence, deterministic
-accounting/comparison, native multithreaded scan, asynchronous runner, and UI workflow are integrated. Remaining work
-is cross-platform readiness and UI inspection. Performance and memory consumption should be kept in mind but are not
-primary design concerns at the current estimates.
+accounting/comparison, native multithreaded scan, asynchronous runner, UI workflow, hardening, and cross-platform
+readiness pass are integrated. Remaining work is optional performance tuning and manual UI inspection. Performance
+and memory consumption should be kept in mind but are not primary design concerns at the current estimates.
 
 Windows is the primary platform. macOS and Linux support are desired.
 
@@ -67,6 +67,8 @@ filesystems remain deterministic without adding substitution machinery to the ap
   `thin_io`, avoiding a UTF-8 round trip.
 - Do not traverse symbolic links, junctions, mount points, or other directory reparse targets while accounting for a
   selected filesystem. Report the entry, but keep traversal within the chosen tree/volume.
+- Linux traversal compares the scan-local `statx` mount ID as well as filesystem identity so bind mounts are boundaries
+  even when they retain the target's device ID. Mount identity is traversal-only and is not persisted across scans.
 - A failed or incomplete directory enumeration must never be treated as an empty, authoritative subtree.
 - Build a scan result completely off-thread and publish it to the UI only when complete and still current.
 - Persist factual observations only; rebuild coverage, allocation totals, hard-link groups, and other derived state

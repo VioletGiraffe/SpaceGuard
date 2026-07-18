@@ -2,6 +2,7 @@
 
 #include <QDir>
 #include <QFile>
+#include <QUrl>
 
 #include <assert.h>
 
@@ -80,6 +81,33 @@ QString nativePathForDisplay(const NativePath& path)
 	return path;
 #else
 	return QFile::decodeName(path);
+#endif
+}
+
+QByteArray nativePathFileUrl(const NativePath& path)
+{
+#ifdef _WIN32
+	return QUrl::fromLocalFile(path).toEncoded(QUrl::FullyEncoded);
+#else
+	static constexpr char HexDigits[] = "0123456789ABCDEF";
+	QByteArray encoded{"file://"};
+	encoded.reserve(encoded.size() + path.size() * 3);
+	for (const char character : path)
+	{
+		const auto byte = static_cast<unsigned char>(character);
+		if ((byte >= 'a' && byte <= 'z') || (byte >= 'A' && byte <= 'Z') || (byte >= '0' && byte <= '9')
+			|| byte == '-' || byte == '.' || byte == '_' || byte == '~' || byte == '/')
+		{
+			encoded += character;
+		}
+		else
+		{
+			encoded += '%';
+			encoded += HexDigits[byte >> 4];
+			encoded += HexDigits[byte & 0x0F];
+		}
+	}
+	return encoded;
 #endif
 }
 

@@ -24,6 +24,7 @@ namespace {
 
 SnapshotEntryMetadata snapshotMetadata(const thin_io::entry_metadata& metadata)
 {
+	// mount_id is meaningful only while traversing the current mount namespace and is deliberately not persisted.
 	return {metadata.logical_size, metadata.allocated_size, metadata.hard_link_count, metadata.identity};
 }
 
@@ -69,6 +70,7 @@ public:
 
 		m_snapshot.root.attributes = rootMetadata->attributes;
 		m_snapshot.root.metadata = snapshotMetadata(*rootMetadata);
+		m_rootMountIdentity = rootMetadata->mount_id;
 		if (rootMetadata->identity)
 			m_rootFilesystemIdentity = rootMetadata->identity->filesystem;
 
@@ -248,10 +250,12 @@ private:
 				child.traversalState = DirectoryTraversalState::link_boundary;
 				continue;
 			}
-			if (m_rootFilesystemIdentity && metadata->identity
-				&& *m_rootFilesystemIdentity != metadata->identity->filesystem)
+			const bool crossesMount = m_rootMountIdentity && metadata->mount_id && *m_rootMountIdentity != *metadata->mount_id;
+			const bool crossesFilesystem = m_rootFilesystemIdentity && metadata->identity
+				&& *m_rootFilesystemIdentity != metadata->identity->filesystem;
+			if (crossesMount || crossesFilesystem)
 			{
-				child.traversalState = DirectoryTraversalState::filesystem_boundary;
+				child.traversalState = DirectoryTraversalState::mount_boundary;
 				continue;
 			}
 			if (m_canceled.load(std::memory_order_relaxed))
@@ -341,6 +345,7 @@ private:
 	SnapshotScanProgressCallback m_progressCallback;
 	Snapshot m_snapshot;
 	SnapshotScanProgress m_progress;
+	std::optional<thin_io::mount_identity> m_rootMountIdentity;
 	std::optional<thin_io::filesystem_identity> m_rootFilesystemIdentity;
 	CWorkerThreadPool* m_workerPool;
 	std::mutex m_workMutex;

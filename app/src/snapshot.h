@@ -27,7 +27,7 @@ enum class DirectoryTraversalState : uint8_t {
 	enumeration_failed,
 	metadata_unavailable,
 	link_boundary,
-	filesystem_boundary
+	mount_boundary
 };
 
 enum class SnapshotOperation : uint8_t {

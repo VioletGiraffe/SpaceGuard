@@ -22,4 +22,5 @@ using NativePathCharacter = char;
 [[nodiscard]] NativeName nativeNameFromThinIo(const thin_io::native_string& name);
 [[nodiscard]] NativePath appendNativeName(const NativePath& parentPath, const NativeName& name);
 [[nodiscard]] QString nativePathForDisplay(const NativePath& path);
+[[nodiscard]] QByteArray nativePathFileUrl(const NativePath& path);
 [[nodiscard]] const NativePathCharacter* nativePathData(const NativePath& path) noexcept;

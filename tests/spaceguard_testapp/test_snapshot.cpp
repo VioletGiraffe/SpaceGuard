@@ -83,7 +83,7 @@ Snapshot makeSnapshot(const bool reverseInsertionOrder = false)
 #ifdef _WIN32
 	link.attributes.reparse_tag = 0xA000000C;
 #endif
-	SnapshotEntry boundary = directoryEntry(DirectoryTraversalState::filesystem_boundary, metadata(0, 4096, 1, identity(99, 4)));
+	SnapshotEntry boundary = directoryEntry(DirectoryTraversalState::mount_boundary, metadata(0, 4096, 1, identity(99, 4)));
 	SnapshotEntry unknown;
 	unknown.attributes.kind = thin_io::entry_kind::unknown;
 
@@ -277,11 +277,15 @@ TEST_CASE("Snapshot loader rejects incompatible formats before reading the paylo
 	qToLittleEndian<quint16>(Snapshot::CurrentFormatVersion + 1, reinterpret_cast<uchar*>(future.data() + 8));
 	checkLoadError(path, future, SnapshotLoadErrorCode::unsupported_version);
 
-	QByteArray otherPlatform = valid;
-	otherPlatform[10] = currentSnapshotPlatform() == SnapshotPlatform::windows
-		? static_cast<char>(SnapshotPlatform::linux_os)
-		: static_cast<char>(SnapshotPlatform::windows);
-	checkLoadError(path, otherPlatform, SnapshotLoadErrorCode::wrong_platform);
+	for (const SnapshotPlatform platform : {SnapshotPlatform::windows, SnapshotPlatform::macos,
+		 SnapshotPlatform::linux_os, SnapshotPlatform::freebsd})
+	{
+		if (platform == currentSnapshotPlatform())
+			continue;
+		QByteArray otherPlatform = valid;
+		otherPlatform[10] = static_cast<char>(platform);
+		checkLoadError(path, otherPlatform, SnapshotLoadErrorCode::wrong_platform);
+	}
 
 	QByteArray invalidPlatform = valid;
 	invalidPlatform[10] = static_cast<char>(0xFF);
@@ -358,6 +362,13 @@ TEST_CASE("Snapshot load and save failures are transactional", "[snapshot][persi
 	const auto saveResult = invalid.save(path);
 	REQUIRE_FALSE(saveResult);
 	CHECK(saveResult.error().code == SnapshotSaveErrorCode::invalid_snapshot);
+	CHECK(readFile(path) == originalBytes);
+
+	invalid = original;
+	invalid.filesystemSpaceAtStart = thin_io::filesystem_space{100, 200, 150, 42};
+	const auto invalidSpaceResult = invalid.save(path);
+	REQUIRE_FALSE(invalidSpaceResult);
+	CHECK(invalidSpaceResult.error().code == SnapshotSaveErrorCode::invalid_snapshot);
 	CHECK(readFile(path) == originalBytes);
 
 	const Snapshot current = original;

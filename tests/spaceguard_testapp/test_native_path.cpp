@@ -62,8 +62,20 @@ TEST_CASE("Native child paths are joined before display conversion", "[native-pa
 	const QString displayed = nativePathForDisplay(child);
 	CHECK_FALSE(displayed.isEmpty());
 	CHECK(std::string{nativePathData(child)} == nativeChild);
+	CHECK(nativePathFileUrl(child) == "file:///root/%FF-data");
 #endif
 }
+
+#ifndef _WIN32
+TEST_CASE("POSIX file URLs preserve native bytes and Unicode normalization", "[native-path][posix]")
+{
+	const NativeName composed{"caf\xC3\xA9"};
+	const NativeName decomposed{"cafe\xCC\x81"};
+	REQUIRE(composed != decomposed);
+	CHECK(nativePathFileUrl(appendNativeName("/root", composed)) == "file:///root/caf%C3%A9");
+	CHECK(nativePathFileUrl(appendNativeName("/root", decomposed)) == "file:///root/cafe%CC%81");
+}
+#endif
 
 #ifdef _WIN32
 TEST_CASE("Extended Windows roots remain opaque", "[native-path][windows]")
@@ -73,5 +85,23 @@ TEST_CASE("Extended Windows roots remain opaque", "[native-path][windows]")
 
 	REQUIRE(normalized);
 	CHECK(*normalized == extended);
+}
+
+TEST_CASE("Windows drive and UNC normalization preserves native spelling", "[native-path][windows]")
+{
+	const auto drive = normalizedAbsoluteNativePath(R"(c:\MiXeD\folder\..\Leaf)");
+	REQUIRE(drive);
+	CHECK(*drive == R"(c:\MiXeD\Leaf)");
+	CHECK(isAbsoluteNativePath(*drive));
+
+	const auto unc = normalizedAbsoluteNativePath(R"(\\Server\Share\folder\..\Leaf)");
+	REQUIRE(unc);
+	CHECK(*unc == R"(\\Server\Share\Leaf)");
+	CHECK(isAbsoluteNativePath(*unc));
+
+	const QString extendedUnc = R"(\\?\UNC\Server\Share\folder\..\literal)";
+	const auto opaque = normalizedAbsoluteNativePath(extendedUnc);
+	REQUIRE(opaque);
+	CHECK(*opaque == extendedUnc);
 }
 #endif
