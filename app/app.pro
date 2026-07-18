@@ -44,6 +44,7 @@ SOURCES += \
 	src/native_path.cpp \
 	src/snapshot.cpp \
 	src/snapshot_comparison.cpp \
+	src/snapshot_scan_runner.cpp \
 	src/snapshot_scanner.cpp
 
 ###################################################
@@ -103,4 +104,5 @@ HEADERS += \
 	src/snapshot.h \
 	src/snapshot_comparison.h \
 	src/snapshot_internal.h \
+	src/snapshot_scan_runner.h \
 	src/snapshot_scanner.h

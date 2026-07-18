@@ -22,13 +22,16 @@ RCC_DIR = ../../build/$${OUTPUT_DIR}/$${TARGET}
 
 INCLUDEPATH += \
 	../../app/src \
+	../../cpputils \
 	../../cpp-template-utils \
 	../../thin_io/src
 
-LIBS += -L$${DESTDIR} -lthin_io
+LIBS += -L$${DESTDIR} -lcpputils -lthin_io
 
 mac*|linux*|freebsd*{
-	PRE_TARGETDEPS += $${DESTDIR}/libthin_io.a
+	PRE_TARGETDEPS += \
+		$${DESTDIR}/libcpputils.a \
+		$${DESTDIR}/libthin_io.a
 }
 
 win*{
@@ -55,11 +58,13 @@ SOURCES += \
 	../../app/src/native_path.cpp \
 	../../app/src/snapshot.cpp \
 	../../app/src/snapshot_comparison.cpp \
+	../../app/src/snapshot_scan_runner.cpp \
 	../../app/src/snapshot_scanner.cpp \
 	test_filesystem_access.cpp \
 	test_native_path.cpp \
 	test_snapshot.cpp \
 	test_snapshot_comparison.cpp \
+	test_snapshot_scan_runner.cpp \
 	test_snapshot_scanner.cpp \
 	tests_main.cpp
 
@@ -69,4 +74,5 @@ HEADERS += \
 	../../app/src/snapshot.h \
 	../../app/src/snapshot_comparison.h \
 	../../app/src/snapshot_internal.h \
+	../../app/src/snapshot_scan_runner.h \
 	../../app/src/snapshot_scanner.h

@@ -412,6 +412,30 @@ TEST_CASE("Snapshot scanner output is independent of enumeration order", "[snaps
 	CHECK(first.root.derived.subtreeAllocatedSize == second.root.derived.subtreeAllocatedSize);
 }
 
+TEST_CASE("Snapshot scanner progress is monotonic", "[snapshot][scanner]")
+{
+	FakeFilesystem filesystem;
+	configureRoot(filesystem, {
+		listed("good", thin_io::entry_kind::regular_file),
+		listed("failed", thin_io::entry_kind::regular_file)
+	});
+	filesystem.metadataByPath.emplace(appendNativeName(rootPath(), nativeName("good")), metadata(thin_io::entry_kind::regular_file, 7, 2, 8));
+	filesystem.metadataByPath.emplace(appendNativeName(rootPath(), nativeName("failed")), error<thin_io::entry_metadata>(13));
+	std::atomic_bool canceled = false;
+	std::vector<SnapshotScanProgress> progress;
+
+	completedSnapshot(scanSnapshot(rootPath(), filesystem, canceled,
+		[&progress](const SnapshotScanProgress& value) { progress.push_back(value); }));
+	REQUIRE_FALSE(progress.empty());
+	for (size_t i = 1; i < progress.size(); ++i)
+	{
+		CHECK(progress[i].directoriesCompleted >= progress[i - 1].directoriesCompleted);
+		CHECK(progress[i].entriesDiscovered >= progress[i - 1].entriesDiscovered);
+		CHECK(progress[i].issues >= progress[i - 1].issues);
+	}
+	CHECK(progress.back() == (SnapshotScanProgress{1, 2, 1}));
+}
+
 TEST_CASE("Snapshot scanner handles native real-filesystem names, nesting, hard links, and links", "[snapshot][scanner][integration]")
 {
 	QTemporaryDir directory;

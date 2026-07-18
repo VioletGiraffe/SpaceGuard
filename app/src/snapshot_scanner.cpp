@@ -28,8 +28,8 @@ void markMetadataUnavailable(SnapshotEntry& entry)
 class Scanner
 {
 public:
-	Scanner(FilesystemAccess& filesystem, const std::atomic_bool& canceled)
-		: m_filesystem{filesystem}, m_canceled{canceled}
+	Scanner(FilesystemAccess& filesystem, const std::atomic_bool& canceled, SnapshotScanProgressCallback progressCallback)
+		: m_filesystem{filesystem}, m_canceled{canceled}, m_progressCallback{std::move(progressCallback)}
 	{
 	}
 
@@ -79,8 +79,7 @@ public:
 			return SnapshotScanCanceled{};
 		if (!completionSpace)
 		{
-			m_snapshot.diagnostics.push_back(
-				{rootPath, SnapshotOperation::filesystem_space_at_completion, completionSpace.error().native_code});
+			recordDiagnostic(rootPath, SnapshotOperation::filesystem_space_at_completion, completionSpace.error().native_code);
 		}
 		else
 		{
@@ -108,7 +107,8 @@ private:
 			if (isRoot)
 				return scanFailure(SnapshotScanFailureCode::root_enumeration_unavailable, path, entries.error().native_code);
 			directory.traversalState = DirectoryTraversalState::enumeration_failed;
-			m_snapshot.diagnostics.push_back({path, SnapshotOperation::directory_enumeration, entries.error().native_code});
+			recordDiagnostic(path, SnapshotOperation::directory_enumeration, entries.error().native_code);
+			completeDirectory();
 			return {};
 		}
 
@@ -122,6 +122,8 @@ private:
 			assert(inserted);
 			(void)inserted;
 		}
+		m_progress.entriesDiscovered += static_cast<uint64_t>(entries->size());
+		reportProgress();
 
 		for (auto& [name, child] : directory.children)
 		{
@@ -134,13 +136,13 @@ private:
 			if (!metadata)
 			{
 				markMetadataUnavailable(child);
-				m_snapshot.diagnostics.push_back({childPath, SnapshotOperation::entry_metadata, metadata.error().native_code});
+				recordDiagnostic(childPath, SnapshotOperation::entry_metadata, metadata.error().native_code);
 				continue;
 			}
 			if (metadata->attributes != child.attributes)
 			{
 				markMetadataUnavailable(child);
-				m_snapshot.diagnostics.push_back({childPath, SnapshotOperation::entry_changed_during_scan, {}});
+				recordDiagnostic(childPath, SnapshotOperation::entry_changed_during_scan, {});
 				continue;
 			}
 
@@ -165,22 +167,48 @@ private:
 		}
 
 		if (!m_canceled.load(std::memory_order_relaxed))
+		{
 			directory.traversalState = DirectoryTraversalState::completed;
+			completeDirectory();
+		}
 		return {};
+	}
+
+	void recordDiagnostic(const NativePath& path, const SnapshotOperation operation,
+		const std::optional<thin_io::filesystem_error_code> nativeErrorCode)
+	{
+		m_snapshot.diagnostics.push_back({path, operation, nativeErrorCode});
+		++m_progress.issues;
+		reportProgress();
+	}
+
+	void completeDirectory()
+	{
+		++m_progress.directoriesCompleted;
+		reportProgress();
+	}
+
+	void reportProgress() const
+	{
+		if (m_progressCallback)
+			m_progressCallback(m_progress);
 	}
 
 	FilesystemAccess& m_filesystem;
 	const std::atomic_bool& m_canceled;
+	SnapshotScanProgressCallback m_progressCallback;
 	Snapshot m_snapshot;
+	SnapshotScanProgress m_progress;
 	std::optional<thin_io::filesystem_identity> m_rootFilesystemIdentity;
 };
 
 } // namespace
 
 SnapshotScanResult scanSnapshot(
-	const NativePath& normalizedRootPath, FilesystemAccess& filesystem, const std::atomic_bool& canceled)
+	const NativePath& normalizedRootPath, FilesystemAccess& filesystem, const std::atomic_bool& canceled,
+	SnapshotScanProgressCallback progressCallback)
 {
-	return Scanner{filesystem, canceled}.scan(normalizedRootPath);
+	return Scanner{filesystem, canceled, std::move(progressCallback)}.scan(normalizedRootPath);
 }
 
 } // namespace SpaceGuard
