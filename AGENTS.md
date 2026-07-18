@@ -53,6 +53,11 @@ SpaceGuard product types live in the global namespace: this executable is alread
 so a redundant application-wide namespace adds noise without disambiguating library clients. Keep focused internal
 namespaces such as `SnapshotInternal` where they genuinely group an implementation detail.
 
+`app/src/filesystem_access.h` is a stateless static adapter that forwards directly to `thin_io`; production scanning
+has no filesystem object, virtual dispatch, or adapter lifetime. The separate test project recompiles
+`snapshot_scanner.cpp` with `SPACEGUARD_TEST_FILESYSTEM_ACCESS`, selecting its callback-backed test adapter so fake
+filesystems remain deterministic without adding substitution machinery to the application.
+
 ## Filesystem design direction
 
 - `thin_io` supplies synchronous single-operation native primitives; SpaceGuard supplies scan policy and concurrency.

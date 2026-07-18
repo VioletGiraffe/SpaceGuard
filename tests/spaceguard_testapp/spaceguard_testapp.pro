@@ -5,6 +5,7 @@ QT = core
 
 CONFIG += console strict_c++ c++2b
 CONFIG -= app_bundle
+DEFINES += SPACEGUARD_TEST_FILESYSTEM_ACCESS
 
 mac* | linux* | freebsd {
 	CONFIG(release, debug|release):CONFIG *= Release optimize_full
@@ -21,6 +22,7 @@ UI_DIR = ../../build/$${OUTPUT_DIR}/$${TARGET}
 RCC_DIR = ../../build/$${OUTPUT_DIR}/$${TARGET}
 
 INCLUDEPATH += \
+	$${PWD} \
 	../../app/src \
 	../../cpputils \
 	../../cpp-template-utils \
@@ -54,7 +56,6 @@ linux*|mac*|freebsd {
 }
 
 SOURCES += \
-	../../app/src/filesystem_access.cpp \
 	../../app/src/native_path.cpp \
 	../../app/src/snapshot.cpp \
 	../../app/src/snapshot_comparison.cpp \
@@ -75,4 +76,5 @@ HEADERS += \
 	../../app/src/snapshot_comparison.h \
 	../../app/src/snapshot_internal.h \
 	../../app/src/snapshot_scan_runner.h \
-	../../app/src/snapshot_scanner.h
+	../../app/src/snapshot_scanner.h \
+	test_filesystem_access_adapter.h

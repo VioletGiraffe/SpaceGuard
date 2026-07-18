@@ -45,7 +45,6 @@ private:
 	void openTableItem(const QTableWidgetItem* item);
 
 	std::unique_ptr<Ui::MainWindow> m_ui;
-	ThinIoFilesystemAccess m_filesystem;
 	CExecutionQueue m_publicationQueue;
 	SnapshotScanRunner m_scanRunner;
 	QTimer m_publicationTimer;

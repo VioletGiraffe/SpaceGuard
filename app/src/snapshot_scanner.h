@@ -1,6 +1,5 @@
 #pragma once
 
-#include "filesystem_access.h"
 #include "snapshot.h"
 
 #include <atomic>
@@ -50,5 +49,5 @@ using SnapshotScanResult = std::variant<Snapshot, SnapshotScanFailure, SnapshotS
 using SnapshotScanProgressCallback = std::function<void(const SnapshotScanProgress&)>;
 
 [[nodiscard]] SnapshotScanResult scanSnapshot(
-	const NativePath& normalizedRootPath, FilesystemAccess& filesystem, const std::atomic_bool& canceled,
+	const NativePath& normalizedRootPath, const std::atomic_bool& canceled,
 	SnapshotScanProgressCallback progressCallback = {}, CWorkerThreadPool* workerPool = nullptr);

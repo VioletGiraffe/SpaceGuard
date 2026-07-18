@@ -7,7 +7,7 @@
 
 #include <algorithm>
 
-TEST_CASE("ThinIoFilesystemAccess forwards native filesystem operations", "[filesystem-access][integration]")
+TEST_CASE("FilesystemAccess forwards native filesystem operations", "[filesystem-access][integration]")
 {
 	QTemporaryDir directory;
 	REQUIRE(directory.isValid());
@@ -20,8 +20,7 @@ TEST_CASE("ThinIoFilesystemAccess forwards native filesystem operations", "[file
 	const auto nativeDirectory = normalizedAbsoluteNativePath(directory.path());
 	REQUIRE(nativeDirectory);
 
-	ThinIoFilesystemAccess filesystem;
-	const auto entries = filesystem.listDirectory(*nativeDirectory);
+	const auto entries = FilesystemAccess::listDirectory(*nativeDirectory);
 	REQUIRE(entries);
 
 	const auto entry = std::ranges::find_if(*entries, [](const thin_io::directory_entry& candidate) {
@@ -34,12 +33,12 @@ TEST_CASE("ThinIoFilesystemAccess forwards native filesystem operations", "[file
 	REQUIRE(entry != entries->end());
 
 	const NativePath nativeFile = appendNativeName(*nativeDirectory, nativeNameFromThinIo(entry->name));
-	const auto metadata = filesystem.getEntryMetadata(nativeFile, thin_io::link_behavior::do_not_follow);
+	const auto metadata = FilesystemAccess::getEntryMetadata(nativeFile, thin_io::link_behavior::do_not_follow);
 	REQUIRE(metadata);
 	CHECK(metadata->attributes.kind == thin_io::entry_kind::regular_file);
 	CHECK(metadata->logical_size == 4);
 
-	const auto space = filesystem.getFilesystemSpace(*nativeDirectory);
+	const auto space = FilesystemAccess::getFilesystemSpace(*nativeDirectory);
 	REQUIRE(space);
 	CHECK(space->capacity > 0);
 }

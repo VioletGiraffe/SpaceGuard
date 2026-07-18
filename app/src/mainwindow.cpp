@@ -206,7 +206,7 @@ QString nativeErrorDescription(const std::optional<thin_io::filesystem_error_cod
 MainWindow::MainWindow(QWidget* parent)
 	: QMainWindow{parent},
 	  m_ui{std::make_unique<Ui::MainWindow>()},
-	  m_scanRunner{m_filesystem, m_publicationQueue, {
+	  m_scanRunner{m_publicationQueue, {
 		  [this](const uint64_t generation, const SnapshotScanProgress& progress) { updateScanProgress(generation, progress); },
 		  [this](const uint64_t generation, const std::shared_ptr<const SnapshotScanResult>& result) { scanCompleted(generation, result); }
 	  }}

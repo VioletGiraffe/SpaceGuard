@@ -40,7 +40,6 @@ INCLUDEPATH += \
 SOURCES += \
 	src/main.cpp \
 	src/mainwindow.cpp \
-	src/filesystem_access.cpp \
 	src/native_path.cpp \
 	src/snapshot.cpp \
 	src/snapshot_comparison.cpp \

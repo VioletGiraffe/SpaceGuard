@@ -37,10 +37,8 @@ struct SnapshotScanRunner::RequestState
 	std::atomic_bool canceled = false;
 };
 
-SnapshotScanRunner::SnapshotScanRunner(
-	FilesystemAccess& filesystem, CExecutionQueue& publicationQueue, SnapshotScanRunnerCallbacks callbacks)
-	: m_filesystem{filesystem},
-	  m_publicationQueue{publicationQueue},
+SnapshotScanRunner::SnapshotScanRunner(CExecutionQueue& publicationQueue, SnapshotScanRunnerCallbacks callbacks)
+	: m_publicationQueue{publicationQueue},
 	  m_callbacks{std::move(callbacks)},
 	  m_progressQueueTag{nextProgressQueueTag()},
 	  m_workerPool{createScanWorkerPool()}
@@ -121,7 +119,7 @@ void SnapshotScanRunner::runScan(
 	SnapshotScanResult result = SnapshotScanCanceled{};
 	try
 	{
-		result = scanSnapshot(rootPath, m_filesystem, request->canceled, reportProgress, m_workerPool.get());
+		result = scanSnapshot(rootPath, request->canceled, reportProgress, m_workerPool.get());
 	}
 	catch (...)
 	{

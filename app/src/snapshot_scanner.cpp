@@ -1,5 +1,13 @@
 #include "snapshot_scanner.h"
 
+#ifdef SPACEGUARD_TEST_FILESYSTEM_ACCESS
+// The separate test executable recompiles this source against its callback-backed adapter.
+#include "test_filesystem_access_adapter.h"
+using FilesystemAccess = TestFilesystemAccess;
+#else
+#include "filesystem_access.h"
+#endif
+
 #include "threading/cworkerthread.h"
 
 #include <QDateTime>
@@ -34,9 +42,8 @@ void markMetadataUnavailable(SnapshotEntry& entry)
 class Scanner
 {
 public:
-	Scanner(FilesystemAccess& filesystem, const std::atomic_bool& canceled, SnapshotScanProgressCallback progressCallback,
-		CWorkerThreadPool* workerPool)
-		: m_filesystem{filesystem}, m_canceled{canceled}, m_progressCallback{std::move(progressCallback)}, m_workerPool{workerPool}
+	Scanner(const std::atomic_bool& canceled, SnapshotScanProgressCallback progressCallback, CWorkerThreadPool* workerPool)
+		: m_canceled{canceled}, m_progressCallback{std::move(progressCallback)}, m_workerPool{workerPool}
 	{
 	}
 
@@ -50,7 +57,7 @@ public:
 		m_snapshot.rootPath = rootPath;
 		m_snapshot.scanStartedAtUtc = QDateTime::currentDateTimeUtc();
 
-		const auto rootMetadata = m_filesystem.getEntryMetadata(rootPath, thin_io::link_behavior::do_not_follow);
+		const auto rootMetadata = FilesystemAccess::getEntryMetadata(rootPath, thin_io::link_behavior::do_not_follow);
 		if (m_canceled.load(std::memory_order_relaxed))
 			return SnapshotScanCanceled{};
 		if (!rootMetadata)
@@ -65,7 +72,7 @@ public:
 		if (rootMetadata->identity)
 			m_rootFilesystemIdentity = rootMetadata->identity->filesystem;
 
-		const auto startSpace = m_filesystem.getFilesystemSpace(rootPath);
+		const auto startSpace = FilesystemAccess::getFilesystemSpace(rootPath);
 		if (m_canceled.load(std::memory_order_relaxed))
 			return SnapshotScanCanceled{};
 		if (!startSpace)
@@ -81,7 +88,7 @@ public:
 		if (m_canceled.load(std::memory_order_relaxed))
 			return SnapshotScanCanceled{};
 
-		const auto completionSpace = m_filesystem.getFilesystemSpace(rootPath);
+		const auto completionSpace = FilesystemAccess::getFilesystemSpace(rootPath);
 		if (m_canceled.load(std::memory_order_relaxed))
 			return SnapshotScanCanceled{};
 		if (!completionSpace)
@@ -187,7 +194,7 @@ private:
 		if (m_canceled.load(std::memory_order_relaxed))
 			return {};
 
-		const auto entries = m_filesystem.listDirectory(work.path);
+		const auto entries = FilesystemAccess::listDirectory(work.path);
 		if (m_canceled.load(std::memory_order_relaxed))
 			return {};
 		if (!entries)
@@ -217,7 +224,7 @@ private:
 			if (m_canceled.load(std::memory_order_relaxed))
 				return {};
 			NativePath childPath = appendNativeName(work.path, name);
-			const auto metadata = m_filesystem.getEntryMetadata(childPath, thin_io::link_behavior::do_not_follow);
+			const auto metadata = FilesystemAccess::getEntryMetadata(childPath, thin_io::link_behavior::do_not_follow);
 			if (m_canceled.load(std::memory_order_relaxed))
 				return {};
 			if (!metadata)
@@ -330,7 +337,6 @@ private:
 			m_progressCallback(m_progress);
 	}
 
-	FilesystemAccess& m_filesystem;
 	const std::atomic_bool& m_canceled;
 	SnapshotScanProgressCallback m_progressCallback;
 	Snapshot m_snapshot;
@@ -349,8 +355,8 @@ private:
 } // namespace
 
 SnapshotScanResult scanSnapshot(
-	const NativePath& normalizedRootPath, FilesystemAccess& filesystem, const std::atomic_bool& canceled,
+	const NativePath& normalizedRootPath, const std::atomic_bool& canceled,
 	SnapshotScanProgressCallback progressCallback, CWorkerThreadPool* workerPool)
 {
-	return Scanner{filesystem, canceled, std::move(progressCallback), workerPool}.scan(normalizedRootPath);
+	return Scanner{canceled, std::move(progressCallback), workerPool}.scan(normalizedRootPath);
 }

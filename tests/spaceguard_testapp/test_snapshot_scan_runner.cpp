@@ -1,6 +1,7 @@
 #include "3rdparty/catch2/catch.hpp"
 
 #include "snapshot_scan_runner.h"
+#include "test_filesystem_access_adapter.h"
 
 #include <assert.h>
 #include <atomic>
@@ -77,7 +78,7 @@ enum class BlockPoint {
 	completion_space
 };
 
-class ControlledFilesystem final : public FilesystemAccess
+class ControlledFilesystem final
 {
 public:
 	ControlledFilesystem(const size_t entryCount = 4,
@@ -86,7 +87,7 @@ public:
 	{
 	}
 
-	thin_io::filesystem_result<std::vector<thin_io::directory_entry>> listDirectory(const NativePath&) override
+	thin_io::filesystem_result<std::vector<thin_io::directory_entry>> listDirectory(const NativePath&)
 	{
 		if (m_behavior == FilesystemBehavior::throw_unexpectedly)
 			throw 42;
@@ -105,7 +106,7 @@ public:
 	}
 
 	thin_io::filesystem_result<thin_io::entry_metadata> getEntryMetadata(
-		const NativePath& path, const thin_io::link_behavior linkBehavior) override
+		const NativePath& path, const thin_io::link_behavior linkBehavior)
 	{
 		assert(linkBehavior == thin_io::link_behavior::do_not_follow);
 		if (path == rootPath())
@@ -121,7 +122,7 @@ public:
 		return fileMetadata(entryNumber + 1);
 	}
 
-	thin_io::filesystem_result<thin_io::filesystem_space> getFilesystemSpace(const NativePath&) override
+	thin_io::filesystem_result<thin_io::filesystem_space> getFilesystemSpace(const NativePath&)
 	{
 		const uint64_t call = m_spaceCalls.fetch_add(1, std::memory_order_relaxed);
 		if (call % 2 == 1)
@@ -204,9 +205,10 @@ const SnapshotScanResult& onlyCompletion(const PublishedEvents& events)
 TEST_CASE("Snapshot scan runner publishes progress before one immutable completion", "[snapshot][scan-runner]")
 {
 	ControlledFilesystem filesystem{20, FilesystemBehavior::success, BlockPoint::root_enumeration};
+	ScopedTestFilesystemAccess filesystemBinding{filesystem};
 	CExecutionQueue queue;
 	PublishedEvents events;
-	SnapshotScanRunner runner{filesystem, queue, events.callbacks()};
+	SnapshotScanRunner runner{queue, events.callbacks()};
 
 	const auto generation = runner.start(rootPath());
 	REQUIRE(generation == 1);
@@ -231,9 +233,10 @@ TEST_CASE("Snapshot scan runner preserves fatal and recoverable outcomes", "[sna
 	SECTION("recoverable scan damage still completes")
 	{
 		ControlledFilesystem filesystem{4, FilesystemBehavior::recoverable_metadata_failure};
+		ScopedTestFilesystemAccess filesystemBinding{filesystem};
 		CExecutionQueue queue;
 		PublishedEvents events;
-		SnapshotScanRunner runner{filesystem, queue, events.callbacks()};
+		SnapshotScanRunner runner{queue, events.callbacks()};
 		REQUIRE(runner.start(rootPath()));
 		REQUIRE(waitUntilIdle(runner));
 		queue.exec();
@@ -248,9 +251,10 @@ TEST_CASE("Snapshot scan runner preserves fatal and recoverable outcomes", "[sna
 	SECTION("fatal scan failure stays typed")
 	{
 		ControlledFilesystem filesystem{0, FilesystemBehavior::fatal_root_failure};
+		ScopedTestFilesystemAccess filesystemBinding{filesystem};
 		CExecutionQueue queue;
 		PublishedEvents events;
-		SnapshotScanRunner runner{filesystem, queue, events.callbacks()};
+		SnapshotScanRunner runner{queue, events.callbacks()};
 		REQUIRE(runner.start(rootPath()));
 		REQUIRE(waitUntilIdle(runner));
 		queue.exec();
@@ -263,9 +267,10 @@ TEST_CASE("Snapshot scan runner preserves fatal and recoverable outcomes", "[sna
 	SECTION("unexpected exceptions cannot escape the scan thread")
 	{
 		ControlledFilesystem filesystem{0, FilesystemBehavior::throw_unexpectedly};
+		ScopedTestFilesystemAccess filesystemBinding{filesystem};
 		CExecutionQueue queue;
 		PublishedEvents events;
-		SnapshotScanRunner runner{filesystem, queue, events.callbacks()};
+		SnapshotScanRunner runner{queue, events.callbacks()};
 		REQUIRE(runner.start(rootPath()));
 		REQUIRE(waitUntilIdle(runner));
 		queue.exec();
@@ -279,9 +284,10 @@ TEST_CASE("Snapshot scan runner preserves fatal and recoverable outcomes", "[sna
 TEST_CASE("Snapshot scan runner cancellation is nonblocking and terminal", "[snapshot][scan-runner]")
 {
 	ControlledFilesystem filesystem{10, FilesystemBehavior::success, BlockPoint::root_enumeration};
+	ScopedTestFilesystemAccess filesystemBinding{filesystem};
 	CExecutionQueue queue;
 	PublishedEvents events;
-	SnapshotScanRunner runner{filesystem, queue, events.callbacks()};
+	SnapshotScanRunner runner{queue, events.callbacks()};
 	REQUIRE(runner.start(rootPath()));
 	REQUIRE(filesystem.waitUntilBlocked());
 
@@ -298,10 +304,11 @@ TEST_CASE("Snapshot scan runner cancellation is nonblocking and terminal", "[sna
 TEST_CASE("Snapshot scan generations let receivers discard stale publication", "[snapshot][scan-runner]")
 {
 	ControlledFilesystem filesystem;
+	ScopedTestFilesystemAccess filesystemBinding{filesystem};
 	CExecutionQueue queue;
 	uint64_t currentGeneration = 0;
 	std::vector<uint64_t> adoptedGenerations;
-	SnapshotScanRunner runner{filesystem, queue, {
+	SnapshotScanRunner runner{queue, {
 		{},
 		[&](const uint64_t generation, const std::shared_ptr<const SnapshotScanResult>&) {
 			if (generation == currentGeneration)
@@ -328,10 +335,11 @@ TEST_CASE("Snapshot scan runner destruction is safe at every scan-thread phase",
 	SECTION("completion already queued")
 	{
 		ControlledFilesystem filesystem;
+		ScopedTestFilesystemAccess filesystemBinding{filesystem};
 		CExecutionQueue queue;
 		PublishedEvents events;
 		{
-			SnapshotScanRunner runner{filesystem, queue, events.callbacks()};
+			SnapshotScanRunner runner{queue, events.callbacks()};
 			REQUIRE(runner.start(rootPath()));
 			REQUIRE(waitUntilIdle(runner));
 		}
@@ -344,9 +352,10 @@ TEST_CASE("Snapshot scan runner destruction is safe at every scan-thread phase",
 		DYNAMIC_SECTION("active at block point " << static_cast<int>(blockPoint))
 		{
 			ControlledFilesystem filesystem{4, FilesystemBehavior::success, blockPoint};
+			ScopedTestFilesystemAccess filesystemBinding{filesystem};
 			CExecutionQueue queue;
 			PublishedEvents events;
-			auto runner = std::make_unique<SnapshotScanRunner>(filesystem, queue, events.callbacks());
+			auto runner = std::make_unique<SnapshotScanRunner>(queue, events.callbacks());
 			REQUIRE(runner->start(rootPath()));
 			REQUIRE(filesystem.waitUntilBlocked());
 			REQUIRE(runner->cancel());

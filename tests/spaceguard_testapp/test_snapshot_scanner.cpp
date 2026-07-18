@@ -1,6 +1,8 @@
 #include "3rdparty/catch2/catch.hpp"
 
+#include "filesystem_access.h"
 #include "snapshot_scanner.h"
+#include "test_filesystem_access_adapter.h"
 #include "threading/cworkerthread.h"
 
 #include <QDir>
@@ -102,7 +104,7 @@ enum class FakeOperation {
 	filesystem_space
 };
 
-class FakeFilesystem final : public FilesystemAccess
+class FakeFilesystem final
 {
 public:
 	std::map<NativePath, thin_io::filesystem_result<std::vector<thin_io::directory_entry>>> directories;
@@ -112,7 +114,7 @@ public:
 	std::vector<NativePath> listedPaths;
 	std::vector<NativePath> metadataPaths;
 
-	thin_io::filesystem_result<std::vector<thin_io::directory_entry>> listDirectory(const NativePath& path) override
+	thin_io::filesystem_result<std::vector<thin_io::directory_entry>> listDirectory(const NativePath& path)
 	{
 		{
 			std::lock_guard lock{historyMutex};
@@ -125,7 +127,7 @@ public:
 	}
 
 	thin_io::filesystem_result<thin_io::entry_metadata> getEntryMetadata(
-		const NativePath& path, const thin_io::link_behavior linkBehavior) override
+		const NativePath& path, const thin_io::link_behavior linkBehavior)
 	{
 		if (linkBehavior != thin_io::link_behavior::do_not_follow)
 			throw std::logic_error{"Scanner followed a link"};
@@ -139,7 +141,7 @@ public:
 		return result;
 	}
 
-	thin_io::filesystem_result<thin_io::filesystem_space> getFilesystemSpace(const NativePath& path) override
+	thin_io::filesystem_result<thin_io::filesystem_space> getFilesystemSpace(const NativePath& path)
 	{
 		REQUIRE(spaceResultIndex < spaceResults.size());
 		const auto result = spaceResults[spaceResultIndex++];
@@ -199,6 +201,15 @@ SnapshotScanFailure failedScan(const SnapshotScanResult& result)
 	const auto* failure = std::get_if<SnapshotScanFailure>(&result);
 	REQUIRE(failure);
 	return *failure;
+}
+
+template<class Filesystem>
+SnapshotScanResult scanSnapshot(
+	const NativePath& normalizedRootPath, Filesystem& filesystem, const std::atomic_bool& canceled,
+	SnapshotScanProgressCallback progressCallback = {}, CWorkerThreadPool* workerPool = nullptr)
+{
+	ScopedTestFilesystemAccess binding{filesystem};
+	return ::scanSnapshot(normalizedRootPath, canceled, std::move(progressCallback), workerPool);
 }
 
 std::filesystem::path filesystemPath(const NativePath& path)
@@ -653,7 +664,7 @@ TEST_CASE("Snapshot scanner handles native real-filesystem names, nesting, hard 
 	std::filesystem::create_directory_symlink(filesystemPath(*normalizedAbsoluteNativePath(root.filePath("nested-\xD0\x96"))),
 		filesystemPath(*nativeRoot) / "directory-link", symbolicLinkError);
 
-	ThinIoFilesystemAccess filesystem;
+	FilesystemAccess filesystem;
 	std::atomic_bool canceled = false;
 	const Snapshot snapshot = completedSnapshot(scanSnapshot(*nativeRoot, filesystem, canceled));
 	CHECK(snapshot.root.children.contains(nativeName("nested-\xD0\x96")));
@@ -693,7 +704,7 @@ TEST_CASE("Snapshot scanner preserves non-UTF-8 POSIX names", "[snapshot][scanne
 	file << "data";
 	file.close();
 
-	ThinIoFilesystemAccess filesystem;
+	FilesystemAccess filesystem;
 	std::atomic_bool canceled = false;
 	const Snapshot snapshot = completedSnapshot(scanSnapshot(*nativeRoot, filesystem, canceled));
 	CHECK(snapshot.root.children.contains(rawName));

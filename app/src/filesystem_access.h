@@ -5,23 +5,22 @@
 
 #include <vector>
 
-// Parallel scans may invoke different operations concurrently; implementations must support that usage.
-class FilesystemAccess
+class FilesystemAccess final
 {
 public:
-	virtual ~FilesystemAccess() = default;
+	[[nodiscard]] static inline thin_io::filesystem_result<std::vector<thin_io::directory_entry>> listDirectory(const NativePath& path)
+	{
+		return thin_io::list_directory(nativePathData(path));
+	}
 
-	[[nodiscard]] virtual thin_io::filesystem_result<std::vector<thin_io::directory_entry>> listDirectory(const NativePath& path) = 0;
-	[[nodiscard]] virtual thin_io::filesystem_result<thin_io::entry_metadata> getEntryMetadata(
-		const NativePath& path, thin_io::link_behavior linkBehavior) = 0;
-	[[nodiscard]] virtual thin_io::filesystem_result<thin_io::filesystem_space> getFilesystemSpace(const NativePath& directoryPath) = 0;
-};
+	[[nodiscard]] static inline thin_io::filesystem_result<thin_io::entry_metadata> getEntryMetadata(
+		const NativePath& path, const thin_io::link_behavior linkBehavior)
+	{
+		return thin_io::get_entry_metadata(nativePathData(path), linkBehavior);
+	}
 
-class ThinIoFilesystemAccess final : public FilesystemAccess
-{
-public:
-	[[nodiscard]] thin_io::filesystem_result<std::vector<thin_io::directory_entry>> listDirectory(const NativePath& path) override;
-	[[nodiscard]] thin_io::filesystem_result<thin_io::entry_metadata> getEntryMetadata(
-		const NativePath& path, thin_io::link_behavior linkBehavior) override;
-	[[nodiscard]] thin_io::filesystem_result<thin_io::filesystem_space> getFilesystemSpace(const NativePath& directoryPath) override;
+	[[nodiscard]] static inline thin_io::filesystem_result<thin_io::filesystem_space> getFilesystemSpace(const NativePath& directoryPath)
+	{
+		return thin_io::get_filesystem_space(nativePathData(directoryPath));
+	}
 };

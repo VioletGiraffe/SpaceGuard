@@ -22,9 +22,9 @@ struct SnapshotScanRunnerCallbacks
 class SnapshotScanRunner
 {
 public:
-	// The filesystem, publication queue, and callback targets must remain alive until the runner is destroyed and its
-	// queued callbacks have been drained or discarded with their owning queue.
-	SnapshotScanRunner(FilesystemAccess& filesystem, CExecutionQueue& publicationQueue, SnapshotScanRunnerCallbacks callbacks);
+	// The publication queue and callback targets must remain alive until the runner is destroyed and its queued callbacks
+	// have been drained or discarded with their owning queue.
+	SnapshotScanRunner(CExecutionQueue& publicationQueue, SnapshotScanRunnerCallbacks callbacks);
 	~SnapshotScanRunner();
 
 	SnapshotScanRunner(const SnapshotScanRunner&) = delete;
@@ -40,8 +40,6 @@ private:
 	void runScan(NativePath rootPath, uint64_t generation, const std::shared_ptr<RequestState>& request);
 	void enqueueProgress(uint64_t generation, const SnapshotScanProgress& progress);
 
-private:
-	FilesystemAccess& m_filesystem;
 	CExecutionQueue& m_publicationQueue;
 	SnapshotScanRunnerCallbacks m_callbacks;
 	const int m_progressQueueTag;
