@@ -372,7 +372,6 @@ void MainWindow::scanCompleted(
 	}
 
 	m_currentSnapshot = completedSnapshot;
-	setScanActive(false);
 	populateDiagnostics();
 	recalculateComparison(true);
 }

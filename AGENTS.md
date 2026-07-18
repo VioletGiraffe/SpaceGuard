@@ -21,8 +21,8 @@ The product-specific code is currently small and lives in `app/src/`:
 
 The prototype replacement is complete in source: the final snapshot model, persistence, deterministic
 accounting/comparison, native multithreaded scan, asynchronous runner, and UI workflow are integrated. Remaining work
-is persistence/comparison/workflow hardening and cross-platform UI inspection. Performance and memory consumption
-should be kept in mind but are not primary design concerns at the current estimates.
+is cross-platform readiness and UI inspection. Performance and memory consumption should be kept in mind but are not
+primary design concerns at the current estimates.
 
 Windows is the primary platform. macOS and Linux support are desired.
 

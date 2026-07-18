@@ -259,6 +259,31 @@ TEST_CASE("Incomplete regions do not hide comparable siblings", "[snapshot][comp
 	CHECK(result->summary.reconciliation == ReconciliationState::incomplete);
 }
 
+TEST_CASE("Comparison results own source-derived paths", "[snapshot][comparison][lifetime]")
+{
+	SnapshotComparisonResult comparison;
+	NativePath changedPath;
+	NativePath excludedPath;
+	{
+		Snapshot baseline = makeSnapshot();
+		baseline.root.children.emplace(nativeName("excluded"), directory());
+		Snapshot current = makeSnapshot();
+		current.root.children.emplace(nativeName("changed"), regularFile(100));
+		current.root.children.emplace(nativeName("excluded"), directory(DirectoryTraversalState::enumeration_failed));
+		changedPath = childPath(current.rootPath, "changed");
+		excludedPath = childPath(current.rootPath, "excluded");
+
+		auto result = comparePrepared(baseline, current, 1);
+		REQUIRE(result);
+		comparison = std::move(*result);
+	}
+
+	REQUIRE(comparison.changes.size() == 1);
+	CHECK(comparison.changes.front().path == changedPath);
+	REQUIRE(comparison.excludedRegions.size() == 1);
+	CHECK(comparison.excludedRegions.front().path == excludedPath);
+}
+
 TEST_CASE("Metadata uncertainty excludes only the affected entry", "[snapshot][comparison]")
 {
 	Snapshot baseline = makeSnapshot();

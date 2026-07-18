@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <array>
+#include <string>
 #include <utility>
 
 namespace {
@@ -226,6 +227,37 @@ TEST_CASE("Snapshot serialization is deterministic", "[snapshot][persistence]")
 	CHECK(readFile(firstPath) == readFile(secondPath));
 }
 
+TEST_CASE("Large snapshots round-trip", "[snapshot][persistence]")
+{
+	constexpr size_t EntryCount = 50000;
+	constexpr size_t DiagnosticCount = 2048;
+	QTemporaryDir directory;
+	REQUIRE(directory.isValid());
+	const QString path = directory.filePath("large.spaceguard");
+
+	Snapshot original = makeSnapshot();
+	original.root.children.clear();
+	original.diagnostics.clear();
+	for (size_t i = 0; i < EntryCount; ++i)
+	{
+		SnapshotEntry entry;
+		entry.attributes = {thin_io::entry_kind::regular_file, false, true, true, 0};
+		entry.metadata = metadata(i + 1, (i + 1) * 4096, 1);
+		const std::string name = "file-" + std::to_string(i);
+		original.root.children.emplace(nativeName(name.c_str()), std::move(entry));
+	}
+	for (size_t i = 0; i < DiagnosticCount; ++i)
+		original.diagnostics.push_back({original.rootPath, SnapshotOperation::entry_changed_during_scan, {}});
+
+	REQUIRE(original.save(path));
+	const auto loaded = Snapshot::load(path);
+	REQUIRE(loaded);
+	CHECK(*loaded == original);
+	CHECK(loaded->root.children.size() == EntryCount);
+	CHECK(loaded->diagnostics.size() == DiagnosticCount);
+	CHECK(loaded->derivedDataAvailable);
+}
+
 TEST_CASE("Snapshot loader rejects incompatible formats before reading the payload", "[snapshot][persistence]")
 {
 	QTemporaryDir directory;
@@ -293,6 +325,20 @@ TEST_CASE("Snapshot loader distinguishes damaged payloads", "[snapshot][persiste
 	std::fill_n(oversizedCountPayload.begin() + rootTraversalStateOffset(snapshot) + 1, sizeof(quint32), static_cast<char>(0xFF));
 	checkLoadError(path, replacePayload(valid, oversizedCountPayload), SnapshotLoadErrorCode::corrupt_data);
 
+	QByteArray oversizedStringPayload = uncompressedPayload(valid);
+	std::fill_n(oversizedStringPayload.begin(), sizeof(quint32), static_cast<char>(0xFF));
+	checkLoadError(path, replacePayload(valid, oversizedStringPayload), SnapshotLoadErrorCode::corrupt_data);
+
+	Snapshot withoutDiagnostics = snapshot;
+	withoutDiagnostics.diagnostics.clear();
+	REQUIRE(withoutDiagnostics.save(path));
+	const QByteArray withoutDiagnosticsFile = readFile(path);
+	QByteArray oversizedDiagnosticCountPayload = uncompressedPayload(withoutDiagnosticsFile);
+	REQUIRE(oversizedDiagnosticCountPayload.size() >= static_cast<qsizetype>(sizeof(quint32)));
+	const qsizetype diagnosticCountOffset = oversizedDiagnosticCountPayload.size() - static_cast<qsizetype>(sizeof(quint32));
+	std::fill_n(oversizedDiagnosticCountPayload.begin() + diagnosticCountOffset, sizeof(quint32), static_cast<char>(0xFF));
+	checkLoadError(path, replacePayload(withoutDiagnosticsFile, oversizedDiagnosticCountPayload), SnapshotLoadErrorCode::corrupt_data);
+
 	QByteArray inconsistentPayload = uncompressedPayload(valid);
 	inconsistentPayload[rootKindOffset(snapshot) + 4] = 1;
 	checkLoadError(path, replacePayload(valid, inconsistentPayload), SnapshotLoadErrorCode::corrupt_data);
@@ -323,4 +369,9 @@ TEST_CASE("Snapshot load and save failures are transactional", "[snapshot][persi
 	const auto missing = Snapshot::load(directory.filePath("missing.spaceguard"));
 	REQUIRE_FALSE(missing);
 	CHECK(missing.error().code == SnapshotLoadErrorCode::open_failed);
+
+	const auto invalidDestination = original.save(directory.filePath("missing/snapshot.spaceguard"));
+	REQUIRE_FALSE(invalidDestination);
+	CHECK(invalidDestination.error().code == SnapshotSaveErrorCode::open_failed);
+	CHECK_FALSE(invalidDestination.error().systemMessage.isEmpty());
 }
