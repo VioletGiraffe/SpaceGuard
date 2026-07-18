@@ -5,8 +5,6 @@
 
 #include <assert.h>
 
-namespace SpaceGuard {
-
 bool isAbsoluteNativePath(const NativePath& path) noexcept
 {
 	if (path.isEmpty())
@@ -94,5 +92,3 @@ const NativePathCharacter* nativePathData(const NativePath& path) noexcept
 	return path.constData();
 #endif
 }
-
-} // namespace SpaceGuard

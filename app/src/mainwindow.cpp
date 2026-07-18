@@ -44,76 +44,76 @@ QString formatBytes(const uint64_t bytes)
 	return QString::number(static_cast<double>(bytes) / TiB, 'f', 1) + " TiB";
 }
 
-QString formatChange(const std::optional<SpaceGuard::MagnitudeChange>& change)
+QString formatChange(const std::optional<MagnitudeChange>& change)
 {
 	if (!change)
 		return "Unavailable";
 
 	switch (change->direction)
 	{
-	case SpaceGuard::ChangeDirection::unchanged:
+	case ChangeDirection::unchanged:
 		return "No change";
-	case SpaceGuard::ChangeDirection::increase:
+	case ChangeDirection::increase:
 		return "+" + formatBytes(change->magnitude);
-	case SpaceGuard::ChangeDirection::decrease:
+	case ChangeDirection::decrease:
 		return "-" + formatBytes(change->magnitude);
 	}
 	return "Unavailable";
 }
 
-QString saveErrorDescription(const SpaceGuard::SnapshotSaveError& error)
+QString saveErrorDescription(const SnapshotSaveError& error)
 {
 	QString description;
 	switch (error.code)
 	{
-	case SpaceGuard::SnapshotSaveErrorCode::invalid_snapshot: description = "The completed scan is not a valid snapshot."; break;
-	case SpaceGuard::SnapshotSaveErrorCode::serialization_failed: description = "The snapshot could not be serialized."; break;
-	case SpaceGuard::SnapshotSaveErrorCode::open_failed: description = "The destination file could not be opened."; break;
-	case SpaceGuard::SnapshotSaveErrorCode::write_failed: description = "The snapshot could not be written."; break;
-	case SpaceGuard::SnapshotSaveErrorCode::commit_failed: description = "The snapshot file could not be committed atomically."; break;
+	case SnapshotSaveErrorCode::invalid_snapshot: description = "The completed scan is not a valid snapshot."; break;
+	case SnapshotSaveErrorCode::serialization_failed: description = "The snapshot could not be serialized."; break;
+	case SnapshotSaveErrorCode::open_failed: description = "The destination file could not be opened."; break;
+	case SnapshotSaveErrorCode::write_failed: description = "The snapshot could not be written."; break;
+	case SnapshotSaveErrorCode::commit_failed: description = "The snapshot file could not be committed atomically."; break;
 	}
 	if (!error.systemMessage.isEmpty())
 		description += "\n\n" + error.systemMessage;
 	return description;
 }
 
-QString loadErrorDescription(const SpaceGuard::SnapshotLoadError& error)
+QString loadErrorDescription(const SnapshotLoadError& error)
 {
 	QString description;
 	switch (error.code)
 	{
-	case SpaceGuard::SnapshotLoadErrorCode::open_failed: description = "The snapshot file could not be opened."; break;
-	case SpaceGuard::SnapshotLoadErrorCode::read_failed: description = "The snapshot file could not be read."; break;
-	case SpaceGuard::SnapshotLoadErrorCode::unsupported_legacy_format: description = "Legacy snapshots are not supported."; break;
-	case SpaceGuard::SnapshotLoadErrorCode::unsupported_version: description = "This snapshot version is not supported."; break;
-	case SpaceGuard::SnapshotLoadErrorCode::wrong_platform: description = "The snapshot was created on a different platform."; break;
-	case SpaceGuard::SnapshotLoadErrorCode::decompression_failed: description = "The snapshot data could not be decompressed."; break;
-	case SpaceGuard::SnapshotLoadErrorCode::truncated: description = "The snapshot file is truncated."; break;
-	case SpaceGuard::SnapshotLoadErrorCode::corrupt_data: description = "The snapshot data is corrupt."; break;
-	case SpaceGuard::SnapshotLoadErrorCode::trailing_data: description = "The snapshot contains unexpected trailing data."; break;
+	case SnapshotLoadErrorCode::open_failed: description = "The snapshot file could not be opened."; break;
+	case SnapshotLoadErrorCode::read_failed: description = "The snapshot file could not be read."; break;
+	case SnapshotLoadErrorCode::unsupported_legacy_format: description = "Legacy snapshots are not supported."; break;
+	case SnapshotLoadErrorCode::unsupported_version: description = "This snapshot version is not supported."; break;
+	case SnapshotLoadErrorCode::wrong_platform: description = "The snapshot was created on a different platform."; break;
+	case SnapshotLoadErrorCode::decompression_failed: description = "The snapshot data could not be decompressed."; break;
+	case SnapshotLoadErrorCode::truncated: description = "The snapshot file is truncated."; break;
+	case SnapshotLoadErrorCode::corrupt_data: description = "The snapshot data is corrupt."; break;
+	case SnapshotLoadErrorCode::trailing_data: description = "The snapshot contains unexpected trailing data."; break;
 	}
 	if (!error.systemMessage.isEmpty())
 		description += "\n\n" + error.systemMessage;
 	return description;
 }
 
-QString scanFailureDescription(const SpaceGuard::SnapshotScanFailure& failure)
+QString scanFailureDescription(const SnapshotScanFailure& failure)
 {
 	QString description;
 	switch (failure.code)
 	{
-	case SpaceGuard::SnapshotScanFailureCode::invalid_root: description = "The selected root path is invalid."; break;
-	case SpaceGuard::SnapshotScanFailureCode::root_metadata_unavailable: description = "The root metadata could not be read."; break;
-	case SpaceGuard::SnapshotScanFailureCode::root_not_directory: description = "The selected root is not a directory."; break;
-	case SpaceGuard::SnapshotScanFailureCode::root_is_link: description = "A link or reparse point cannot be used as the scan root."; break;
-	case SpaceGuard::SnapshotScanFailureCode::filesystem_space_at_start_unavailable: description = "Filesystem space could not be read before scanning."; break;
-	case SpaceGuard::SnapshotScanFailureCode::root_filesystem_identity_mismatch: description = "The root does not belong to the filesystem reported for the selected path."; break;
-	case SpaceGuard::SnapshotScanFailureCode::root_enumeration_unavailable: description = "The root directory could not be enumerated."; break;
-	case SpaceGuard::SnapshotScanFailureCode::root_filesystem_identity_changed: description = "The root filesystem identity changed during the scan."; break;
-	case SpaceGuard::SnapshotScanFailureCode::unexpected_error: description = "The scan stopped because of an unexpected error."; break;
+	case SnapshotScanFailureCode::invalid_root: description = "The selected root path is invalid."; break;
+	case SnapshotScanFailureCode::root_metadata_unavailable: description = "The root metadata could not be read."; break;
+	case SnapshotScanFailureCode::root_not_directory: description = "The selected root is not a directory."; break;
+	case SnapshotScanFailureCode::root_is_link: description = "A link or reparse point cannot be used as the scan root."; break;
+	case SnapshotScanFailureCode::filesystem_space_at_start_unavailable: description = "Filesystem space could not be read before scanning."; break;
+	case SnapshotScanFailureCode::root_filesystem_identity_mismatch: description = "The root does not belong to the filesystem reported for the selected path."; break;
+	case SnapshotScanFailureCode::root_enumeration_unavailable: description = "The root directory could not be enumerated."; break;
+	case SnapshotScanFailureCode::root_filesystem_identity_changed: description = "The root filesystem identity changed during the scan."; break;
+	case SnapshotScanFailureCode::unexpected_error: description = "The scan stopped because of an unexpected error."; break;
 	}
 
-	description += "\n\nPath: " + SpaceGuard::nativePathForDisplay(failure.path);
+	description += "\n\nPath: " + nativePathForDisplay(failure.path);
 	if (failure.nativeErrorCode)
 	{
 		const thin_io::filesystem_error error{*failure.nativeErrorCode};
@@ -122,34 +122,34 @@ QString scanFailureDescription(const SpaceGuard::SnapshotScanFailure& failure)
 	return description;
 }
 
-QString comparisonErrorDescription(const SpaceGuard::SnapshotComparisonError error)
+QString comparisonErrorDescription(const SnapshotComparisonError error)
 {
 	switch (error)
 	{
-	case SpaceGuard::SnapshotComparisonError::invalid_baseline_root: return "The saved snapshot does not contain a valid, completely enumerated root.";
-	case SpaceGuard::SnapshotComparisonError::invalid_current_root: return "The current scan does not contain a valid, completely enumerated root.";
-	case SpaceGuard::SnapshotComparisonError::different_root_paths: return "The saved snapshot and current scan use different root paths.";
-	case SpaceGuard::SnapshotComparisonError::filesystem_identity_mismatch: return "The selected path now refers to a different filesystem.";
-	case SpaceGuard::SnapshotComparisonError::root_identity_mismatch: return "The selected path now refers to a different root directory.";
+	case SnapshotComparisonError::invalid_baseline_root: return "The saved snapshot does not contain a valid, completely enumerated root.";
+	case SnapshotComparisonError::invalid_current_root: return "The current scan does not contain a valid, completely enumerated root.";
+	case SnapshotComparisonError::different_root_paths: return "The saved snapshot and current scan use different root paths.";
+	case SnapshotComparisonError::filesystem_identity_mismatch: return "The selected path now refers to a different filesystem.";
+	case SnapshotComparisonError::root_identity_mismatch: return "The selected path now refers to a different root directory.";
 	}
 	return "The snapshots cannot be compared.";
 }
 
-QString diagnosticOperationName(const SpaceGuard::SnapshotOperation operation)
+QString diagnosticOperationName(const SnapshotOperation operation)
 {
 	switch (operation)
 	{
-	case SpaceGuard::SnapshotOperation::root_metadata: return "Root metadata";
-	case SpaceGuard::SnapshotOperation::directory_enumeration: return "Directory enumeration";
-	case SpaceGuard::SnapshotOperation::entry_metadata: return "Entry metadata";
-	case SpaceGuard::SnapshotOperation::filesystem_space_at_start: return "Filesystem space at start";
-	case SpaceGuard::SnapshotOperation::filesystem_space_at_completion: return "Filesystem space at completion";
-	case SpaceGuard::SnapshotOperation::entry_changed_during_scan: return "Entry changed during scan";
+	case SnapshotOperation::root_metadata: return "Root metadata";
+	case SnapshotOperation::directory_enumeration: return "Directory enumeration";
+	case SnapshotOperation::entry_metadata: return "Entry metadata";
+	case SnapshotOperation::filesystem_space_at_start: return "Filesystem space at start";
+	case SnapshotOperation::filesystem_space_at_completion: return "Filesystem space at completion";
+	case SnapshotOperation::entry_changed_during_scan: return "Entry changed during scan";
 	}
 	return "Unknown";
 }
 
-QString excludedRegionReason(const SpaceGuard::ComparisonExcludedRegion& region)
+QString excludedRegionReason(const ComparisonExcludedRegion& region)
 {
 	QStringList reasons;
 	if (region.baselineCoverageIncomplete)
@@ -163,12 +163,12 @@ QString excludedRegionReason(const SpaceGuard::ComparisonExcludedRegion& region)
 	return reasons.join(", ");
 }
 
-void storeNativePath(QTableWidgetItem& item, const SpaceGuard::NativePath& path)
+void storeNativePath(QTableWidgetItem& item, const NativePath& path)
 {
 	item.setData(Qt::UserRole, path);
 }
 
-SpaceGuard::NativePath storedNativePath(const QTableWidgetItem& item)
+NativePath storedNativePath(const QTableWidgetItem& item)
 {
 #ifdef _WIN32
 	return item.data(Qt::UserRole).toString();
@@ -177,7 +177,7 @@ SpaceGuard::NativePath storedNativePath(const QTableWidgetItem& item)
 #endif
 }
 
-void setRowPath(QTableWidget& table, const int row, const SpaceGuard::NativePath& path)
+void setRowPath(QTableWidget& table, const int row, const NativePath& path)
 {
 	for (int column = 0; column < table.columnCount(); ++column)
 		storeNativePath(*table.item(row, column), path);
@@ -207,8 +207,8 @@ MainWindow::MainWindow(QWidget* parent)
 	: QMainWindow{parent},
 	  m_ui{std::make_unique<Ui::MainWindow>()},
 	  m_scanRunner{m_filesystem, m_publicationQueue, {
-		  [this](const uint64_t generation, const SpaceGuard::SnapshotScanProgress& progress) { updateScanProgress(generation, progress); },
-		  [this](const uint64_t generation, const std::shared_ptr<const SpaceGuard::SnapshotScanResult>& result) { scanCompleted(generation, result); }
+		  [this](const uint64_t generation, const SnapshotScanProgress& progress) { updateScanProgress(generation, progress); },
+		  [this](const uint64_t generation, const std::shared_ptr<const SnapshotScanResult>& result) { scanCompleted(generation, result); }
 	  }}
 {
 	m_ui->setupUi(this);
@@ -257,7 +257,7 @@ void MainWindow::chooseRootDirectory()
 
 void MainWindow::createSnapshot()
 {
-	const std::optional<SpaceGuard::NativePath> rootPath = SpaceGuard::normalizedAbsoluteNativePath(m_ui->rootPathEdit->text());
+	const std::optional<NativePath> rootPath = normalizedAbsoluteNativePath(m_ui->rootPathEdit->text());
 	if (!rootPath)
 	{
 		QMessageBox::warning(this, "Invalid root", "Select a valid absolute directory path.");
@@ -279,7 +279,7 @@ void MainWindow::compareWithSnapshot()
 	if (snapshotPath.isEmpty())
 		return;
 
-	auto loaded = SpaceGuard::Snapshot::load(snapshotPath);
+	auto loaded = Snapshot::load(snapshotPath);
 	if (!loaded)
 	{
 		QMessageBox::critical(this, "Cannot load snapshot", loadErrorDescription(loaded.error()));
@@ -287,9 +287,9 @@ void MainWindow::compareWithSnapshot()
 	}
 
 	settings.setValue(Settings::SavePath, QFileInfo{snapshotPath}.absolutePath());
-	m_baselineSnapshot = std::make_shared<const SpaceGuard::Snapshot>(std::move(*loaded));
+	m_baselineSnapshot = std::make_shared<const Snapshot>(std::move(*loaded));
 	m_currentSnapshot.reset();
-	m_ui->rootPathEdit->setText(SpaceGuard::nativePathForDisplay(m_baselineSnapshot->rootPath));
+	m_ui->rootPathEdit->setText(nativePathForDisplay(m_baselineSnapshot->rootPath));
 	clearComparisonDisplay();
 	populateDiagnostics();
 	beginScan(ScanPurpose::compare_with_snapshot, m_baselineSnapshot->rootPath);
@@ -303,7 +303,7 @@ void MainWindow::cancelScan()
 	m_ui->scanStatusLabel->setText("Canceling...");
 }
 
-void MainWindow::beginScan(const ScanPurpose purpose, const SpaceGuard::NativePath& rootPath)
+void MainWindow::beginScan(const ScanPurpose purpose, const NativePath& rootPath)
 {
 	try
 	{
@@ -329,7 +329,7 @@ void MainWindow::beginScan(const ScanPurpose purpose, const SpaceGuard::NativePa
 	}
 }
 
-void MainWindow::updateScanProgress(const uint64_t generation, const SpaceGuard::SnapshotScanProgress& progress)
+void MainWindow::updateScanProgress(const uint64_t generation, const SnapshotScanProgress& progress)
 {
 	if (!m_activeGeneration || generation != *m_activeGeneration)
 		return;
@@ -340,7 +340,7 @@ void MainWindow::updateScanProgress(const uint64_t generation, const SpaceGuard:
 }
 
 void MainWindow::scanCompleted(
-	const uint64_t generation, const std::shared_ptr<const SpaceGuard::SnapshotScanResult>& result)
+	const uint64_t generation, const std::shared_ptr<const SnapshotScanResult>& result)
 {
 	if (!m_activeGeneration || generation != *m_activeGeneration)
 		return;
@@ -350,20 +350,20 @@ void MainWindow::scanCompleted(
 	m_activePurpose.reset();
 	setScanActive(false);
 
-	if (std::holds_alternative<SpaceGuard::SnapshotScanCanceled>(*result))
+	if (std::holds_alternative<SnapshotScanCanceled>(*result))
 	{
 		m_ui->scanStatusLabel->setText("Scan canceled.");
 		return;
 	}
-	if (const auto* failure = std::get_if<SpaceGuard::SnapshotScanFailure>(result.get()))
+	if (const auto* failure = std::get_if<SnapshotScanFailure>(result.get()))
 	{
 		m_ui->scanStatusLabel->setText("Scan failed.");
 		QMessageBox::critical(this, "Scan failed", scanFailureDescription(*failure));
 		return;
 	}
 
-	const SpaceGuard::Snapshot& snapshot = std::get<SpaceGuard::Snapshot>(*result);
-	const std::shared_ptr<const SpaceGuard::Snapshot> completedSnapshot{result, &snapshot};
+	const Snapshot& snapshot = std::get<Snapshot>(*result);
+	const std::shared_ptr<const Snapshot> completedSnapshot{result, &snapshot};
 	m_ui->scanStatusLabel->setText(QString{"Scan complete: %1 issue(s)."}.arg(static_cast<qulonglong>(snapshot.diagnostics.size())));
 	if (purpose == ScanPurpose::create_snapshot)
 	{
@@ -388,7 +388,7 @@ void MainWindow::setScanActive(const bool active)
 	m_ui->thresholdSpinBox->setEnabled(!active && m_baselineSnapshot && m_currentSnapshot);
 }
 
-void MainWindow::saveCreatedSnapshot(const SpaceGuard::Snapshot& snapshot)
+void MainWindow::saveCreatedSnapshot(const Snapshot& snapshot)
 {
 	QStringList qualifications;
 	if (!snapshot.diagnostics.empty())
@@ -431,7 +431,7 @@ void MainWindow::recalculateComparison(const bool reportError)
 		return;
 
 	const uint64_t threshold = static_cast<uint64_t>(m_ui->thresholdSpinBox->value()) * BytesPerMiB;
-	auto comparison = SpaceGuard::compareSnapshots(*m_baselineSnapshot, *m_currentSnapshot, threshold);
+	auto comparison = compareSnapshots(*m_baselineSnapshot, *m_currentSnapshot, threshold);
 	if (!comparison)
 	{
 		clearComparisonDisplay();
@@ -445,7 +445,7 @@ void MainWindow::recalculateComparison(const bool reportError)
 	displayComparison(*comparison);
 }
 
-void MainWindow::displayComparison(const SpaceGuard::SnapshotComparisonResult& comparison)
+void MainWindow::displayComparison(const SnapshotComparisonResult& comparison)
 {
 	const auto& summary = comparison.summary;
 	m_ui->freeSpaceValueLabel->setText(formatChange(summary.freeSpaceChange));
@@ -455,12 +455,12 @@ void MainWindow::displayComparison(const SpaceGuard::SnapshotComparisonResult& c
 	m_ui->capacityValueLabel->setText(formatChange(summary.capacityChange));
 	switch (summary.reconciliation)
 	{
-	case SpaceGuard::ReconciliationState::exact: m_ui->reconciliationValueLabel->setText("Exact"); break;
-	case SpaceGuard::ReconciliationState::incomplete: m_ui->reconciliationValueLabel->setText("Incomplete"); break;
-	case SpaceGuard::ReconciliationState::overflow: m_ui->reconciliationValueLabel->setText("Overflow"); break;
+	case ReconciliationState::exact: m_ui->reconciliationValueLabel->setText("Exact"); break;
+	case ReconciliationState::incomplete: m_ui->reconciliationValueLabel->setText("Incomplete"); break;
+	case ReconciliationState::overflow: m_ui->reconciliationValueLabel->setText("Overflow"); break;
 	}
 
-	std::vector<SpaceGuard::ComparisonChange> changes = comparison.changes;
+	std::vector<ComparisonChange> changes = comparison.changes;
 	std::sort(changes.begin(), changes.end(), [](const auto& left, const auto& right) {
 		return left.allocatedIncrease != right.allocatedIncrease
 			? left.allocatedIncrease > right.allocatedIncrease : left.path < right.path;
@@ -470,7 +470,7 @@ void MainWindow::displayComparison(const SpaceGuard::SnapshotComparisonResult& c
 	{
 		const auto& change = changes[static_cast<size_t>(row)];
 		m_ui->changesTable->setItem(row, 0, new QTableWidgetItem{formatBytes(change.allocatedIncrease)});
-		m_ui->changesTable->setItem(row, 1, new QTableWidgetItem{SpaceGuard::nativePathForDisplay(change.path)});
+		m_ui->changesTable->setItem(row, 1, new QTableWidgetItem{nativePathForDisplay(change.path)});
 		setRowPath(*m_ui->changesTable, row, change.path);
 	}
 
@@ -478,7 +478,7 @@ void MainWindow::displayComparison(const SpaceGuard::SnapshotComparisonResult& c
 	for (int row = 0; row < static_cast<int>(comparison.excludedRegions.size()); ++row)
 	{
 		const auto& region = comparison.excludedRegions[static_cast<size_t>(row)];
-		m_ui->excludedTable->setItem(row, 0, new QTableWidgetItem{SpaceGuard::nativePathForDisplay(region.path)});
+		m_ui->excludedTable->setItem(row, 0, new QTableWidgetItem{nativePathForDisplay(region.path)});
 		m_ui->excludedTable->setItem(row, 1, new QTableWidgetItem{excludedRegionReason(region)});
 		setRowPath(*m_ui->excludedTable, row, region.path);
 	}
@@ -489,16 +489,16 @@ void MainWindow::displayComparison(const SpaceGuard::SnapshotComparisonResult& c
 	m_ui->resultTabs->setTabText(2, QString{"Scan issues (%1)"}.arg(m_ui->diagnosticsTable->rowCount()));
 
 	QStringList notices;
-	for (const SpaceGuard::SnapshotComparisonWarning warning : comparison.warnings)
+	for (const SnapshotComparisonWarning warning : comparison.warnings)
 	{
-		if (warning == SpaceGuard::SnapshotComparisonWarning::root_identity_unavailable)
+		if (warning == SnapshotComparisonWarning::root_identity_unavailable)
 			notices.push_back("The root identity was unavailable, so root replacement could not be verified.");
 		else
 			notices.push_back("The filesystem identity was unavailable, so filesystem replacement could not be verified.");
 	}
-	if (summary.baselineScanFreeSpaceChange && summary.baselineScanFreeSpaceChange->direction != SpaceGuard::ChangeDirection::unchanged)
+	if (summary.baselineScanFreeSpaceChange && summary.baselineScanFreeSpaceChange->direction != ChangeDirection::unchanged)
 		notices.push_back("Free space changed by " + formatChange(summary.baselineScanFreeSpaceChange) + " while the baseline scan was running.");
-	if (summary.currentScanFreeSpaceChange && summary.currentScanFreeSpaceChange->direction != SpaceGuard::ChangeDirection::unchanged)
+	if (summary.currentScanFreeSpaceChange && summary.currentScanFreeSpaceChange->direction != ChangeDirection::unchanged)
 		notices.push_back("Free space changed by " + formatChange(summary.currentScanFreeSpaceChange) + " while the current scan was running.");
 	if (!comparison.excludedRegions.empty())
 		notices.push_back(QString{"%1 region(s) were excluded because their scan coverage or accounting was uncertain."}
@@ -528,8 +528,8 @@ void MainWindow::clearComparisonDisplay()
 void MainWindow::populateDiagnostics()
 {
 	m_ui->diagnosticsTable->setRowCount(0);
-	const auto addSnapshotDiagnostics = [this](const QString& source, const SpaceGuard::Snapshot& snapshot) {
-		for (const SpaceGuard::SnapshotDiagnostic& diagnostic : snapshot.diagnostics)
+	const auto addSnapshotDiagnostics = [this](const QString& source, const Snapshot& snapshot) {
+		for (const SnapshotDiagnostic& diagnostic : snapshot.diagnostics)
 		{
 			const int row = m_ui->diagnosticsTable->rowCount();
 			m_ui->diagnosticsTable->insertRow(row);
@@ -537,7 +537,7 @@ void MainWindow::populateDiagnostics()
 			m_ui->diagnosticsTable->setItem(row, 1, new QTableWidgetItem{diagnosticOperationName(diagnostic.operation)});
 			m_ui->diagnosticsTable->setItem(row, 2, new QTableWidgetItem{nativeErrorCodeText(diagnostic.nativeErrorCode)});
 			m_ui->diagnosticsTable->setItem(row, 3, new QTableWidgetItem{nativeErrorDescription(diagnostic.nativeErrorCode)});
-			m_ui->diagnosticsTable->setItem(row, 4, new QTableWidgetItem{SpaceGuard::nativePathForDisplay(diagnostic.path)});
+			m_ui->diagnosticsTable->setItem(row, 4, new QTableWidgetItem{nativePathForDisplay(diagnostic.path)});
 			setRowPath(*m_ui->diagnosticsTable, row, diagnostic.path);
 		}
 	};
@@ -553,19 +553,19 @@ void MainWindow::openTableItem(const QTableWidgetItem* item)
 {
 	if (!item || !item->data(Qt::UserRole).isValid())
 		return;
-	const SpaceGuard::NativePath path = storedNativePath(*item);
+	const NativePath path = storedNativePath(*item);
 	bool started = false;
 #ifdef _WIN32
 	started = QProcess::startDetached("explorer.exe", {"/select," + QDir::toNativeSeparators(path)});
 #elif defined(__APPLE__)
-	started = QProcess::startDetached("/usr/bin/open", {"-R", SpaceGuard::nativePathForDisplay(path)});
+	started = QProcess::startDetached("/usr/bin/open", {"-R", nativePathForDisplay(path)});
 #elif defined(__linux__)
-	const QString url = QUrl::fromLocalFile(SpaceGuard::nativePathForDisplay(path)).toString(QUrl::FullyEncoded);
+	const QString url = QUrl::fromLocalFile(nativePathForDisplay(path)).toString(QUrl::FullyEncoded);
 	started = QProcess::startDetached("dbus-send", {"--session", "--dest=org.freedesktop.FileManager1", "--type=method_call",
 		"/org/freedesktop/FileManager1", "org.freedesktop.FileManager1.ShowItems", "array:string:" + url, "string:"});
 #else
-	started = QDesktopServices::openUrl(QUrl::fromLocalFile(SpaceGuard::nativePathForDisplay(path)));
+	started = QDesktopServices::openUrl(QUrl::fromLocalFile(nativePathForDisplay(path)));
 #endif
 	if (!started)
-		m_ui->scanStatusLabel->setText("Could not open " + SpaceGuard::nativePathForDisplay(path));
+		m_ui->scanStatusLabel->setText("Could not open " + nativePathForDisplay(path));
 }

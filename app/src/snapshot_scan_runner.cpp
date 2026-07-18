@@ -9,7 +9,6 @@
 #include <thread>
 #include <utility>
 
-namespace SpaceGuard {
 namespace {
 
 constexpr std::chrono::milliseconds ProgressPublicationInterval{100};
@@ -159,5 +158,3 @@ void SnapshotScanRunner::enqueueProgress(const uint64_t generation, const Snapsh
 		progressCallback(generation, progress);
 	}, m_progressQueueTag);
 }
-
-} // namespace SpaceGuard

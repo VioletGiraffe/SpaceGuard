@@ -4,13 +4,13 @@
 #include <QDataStream>
 #include <QFile>
 #include <QSaveFile>
+#include <QTimeZone>
 #include <QtEndian>
 
 #include <algorithm>
 #include <limits>
 #include <utility>
 
-namespace SpaceGuard {
 namespace {
 
 constexpr char FileMagic[] = {'S', 'P', 'G', 'U', 'A', 'R', 'D', '\0'};
@@ -498,8 +498,8 @@ PayloadReadResult deserializePayload(const QByteArray& payload, Snapshot& snapsh
 	if (diagnosticCount > MaximumDiagnosticCount)
 		return PayloadReadResult::corrupt;
 
-	snapshot.scanStartedAtUtc = QDateTime::fromMSecsSinceEpoch(startedAt, Qt::UTC);
-	snapshot.scanCompletedAtUtc = QDateTime::fromMSecsSinceEpoch(completedAt, Qt::UTC);
+	snapshot.scanStartedAtUtc = QDateTime::fromMSecsSinceEpoch(startedAt, QTimeZone::UTC);
+	snapshot.scanCompletedAtUtc = QDateTime::fromMSecsSinceEpoch(completedAt, QTimeZone::UTC);
 	snapshot.diagnostics.clear();
 	snapshot.diagnostics.reserve(diagnosticCount);
 	for (uint32_t i = 0; i < diagnosticCount; ++i)
@@ -791,5 +791,3 @@ void Snapshot::rebuildDerivedData()
 	aggregateDerivedData(root);
 	derivedDataAvailable = true;
 }
-
-} // namespace SpaceGuard

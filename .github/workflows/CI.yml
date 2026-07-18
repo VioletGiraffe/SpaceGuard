@@ -47,7 +47,7 @@ jobs:
       run: |
         "$QT_ROOT_DIR/bin/qmake" -v
         "$QT_ROOT_DIR/bin/qmake" -r CONFIG+=release
-        make -j2
+        make -j
 
     - name: Run tests on Windows
       if: startsWith(matrix.os, 'windows')
@@ -69,4 +69,4 @@ jobs:
       if: ${{ !startsWith(matrix.os, 'windows') }}
       run: |
         "$QT_ROOT_DIR/bin/qmake" -r CONFIG+=release
-        make -j2
+        make -j

@@ -5,8 +5,6 @@
 
 #include <vector>
 
-namespace SpaceGuard {
-
 // Parallel scans may invoke different operations concurrently; implementations must support that usage.
 class FilesystemAccess
 {
@@ -27,5 +25,3 @@ public:
 		const NativePath& path, thin_io::link_behavior linkBehavior) override;
 	[[nodiscard]] thin_io::filesystem_result<thin_io::filesystem_space> getFilesystemSpace(const NativePath& directoryPath) override;
 };
-
-} // namespace SpaceGuard

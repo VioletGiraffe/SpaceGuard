@@ -25,8 +25,6 @@
 #include <utility>
 #include <vector>
 
-using namespace SpaceGuard;
-
 namespace {
 
 NativePath nativePath(const char* path)

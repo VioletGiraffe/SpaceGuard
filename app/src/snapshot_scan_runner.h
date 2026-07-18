@@ -13,8 +13,6 @@
 
 class CWorkerThreadPool;
 
-namespace SpaceGuard {
-
 struct SnapshotScanRunnerCallbacks
 {
 	std::function<void(uint64_t generation, const SnapshotScanProgress& progress)> progress;
@@ -56,5 +54,3 @@ private:
 	std::unique_ptr<CWorkerThreadPool> m_workerPool;
 	CInterruptableThread m_scanThread{"SpaceGuard snapshot scan"};
 };
-
-} // namespace SpaceGuard

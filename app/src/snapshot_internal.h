@@ -6,7 +6,7 @@
 #include <optional>
 #include <stdint.h>
 
-namespace SpaceGuard::SnapshotInternal {
+namespace SnapshotInternal {
 
 struct EntryIdentityLess
 {
@@ -29,4 +29,4 @@ inline std::optional<uint64_t> addAllocatedSizes(
 	return *total + *value;
 }
 
-} // namespace SpaceGuard::SnapshotInternal
+} // namespace SnapshotInternal

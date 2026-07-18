@@ -32,26 +32,26 @@ private:
 	void createSnapshot();
 	void compareWithSnapshot();
 	void cancelScan();
-	void beginScan(ScanPurpose purpose, const SpaceGuard::NativePath& rootPath);
-	void updateScanProgress(uint64_t generation, const SpaceGuard::SnapshotScanProgress& progress);
-	void scanCompleted(uint64_t generation, const std::shared_ptr<const SpaceGuard::SnapshotScanResult>& result);
+	void beginScan(ScanPurpose purpose, const NativePath& rootPath);
+	void updateScanProgress(uint64_t generation, const SnapshotScanProgress& progress);
+	void scanCompleted(uint64_t generation, const std::shared_ptr<const SnapshotScanResult>& result);
 	void setScanActive(bool active);
 
-	void saveCreatedSnapshot(const SpaceGuard::Snapshot& snapshot);
+	void saveCreatedSnapshot(const Snapshot& snapshot);
 	void recalculateComparison(bool reportError = false);
-	void displayComparison(const SpaceGuard::SnapshotComparisonResult& comparison);
+	void displayComparison(const SnapshotComparisonResult& comparison);
 	void clearComparisonDisplay();
 	void populateDiagnostics();
 	void openTableItem(const QTableWidgetItem* item);
 
 	std::unique_ptr<Ui::MainWindow> m_ui;
-	SpaceGuard::ThinIoFilesystemAccess m_filesystem;
+	ThinIoFilesystemAccess m_filesystem;
 	CExecutionQueue m_publicationQueue;
-	SpaceGuard::SnapshotScanRunner m_scanRunner;
+	SnapshotScanRunner m_scanRunner;
 	QTimer m_publicationTimer;
 
 	std::optional<uint64_t> m_activeGeneration;
 	std::optional<ScanPurpose> m_activePurpose;
-	std::shared_ptr<const SpaceGuard::Snapshot> m_baselineSnapshot;
-	std::shared_ptr<const SpaceGuard::Snapshot> m_currentSnapshot;
+	std::shared_ptr<const Snapshot> m_baselineSnapshot;
+	std::shared_ptr<const Snapshot> m_currentSnapshot;
 };

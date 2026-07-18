@@ -14,8 +14,6 @@
 #include <stdint.h>
 #include <vector>
 
-namespace SpaceGuard {
-
 enum class SnapshotPlatform : uint8_t {
 	windows = 1,
 	macos,
@@ -162,5 +160,3 @@ struct Snapshot
 };
 
 [[nodiscard]] SnapshotPlatform currentSnapshotPlatform() noexcept;
-
-} // namespace SpaceGuard

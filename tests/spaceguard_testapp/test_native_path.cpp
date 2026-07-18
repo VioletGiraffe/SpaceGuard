@@ -4,8 +4,6 @@
 
 #include <string>
 
-using namespace SpaceGuard;
-
 TEST_CASE("Native roots must be absolute and are normalized", "[native-path]")
 {
 	CHECK_FALSE(normalizedAbsoluteNativePath({}));

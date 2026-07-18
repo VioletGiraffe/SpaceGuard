@@ -4,13 +4,12 @@
 
 #include <QFile>
 #include <QTemporaryDir>
+#include <QTimeZone>
 #include <QtEndian>
 
 #include <algorithm>
 #include <array>
 #include <utility>
-
-using namespace SpaceGuard;
 
 namespace {
 
@@ -111,8 +110,8 @@ Snapshot makeSnapshot(const bool reverseInsertionOrder = false)
 
 	snapshot.filesystemSpaceAtStart = thin_io::filesystem_space{100000, 40000, 30000, filesystem};
 	snapshot.filesystemSpaceAtCompletion = thin_io::filesystem_space{100000, 35000, 25000, {}};
-	snapshot.scanStartedAtUtc = QDateTime::fromMSecsSinceEpoch(1000, Qt::UTC);
-	snapshot.scanCompletedAtUtc = QDateTime::fromMSecsSinceEpoch(2000, Qt::UTC);
+	snapshot.scanStartedAtUtc = QDateTime::fromMSecsSinceEpoch(1000, QTimeZone::UTC);
+	snapshot.scanCompletedAtUtc = QDateTime::fromMSecsSinceEpoch(2000, QTimeZone::UTC);
 
 	const std::array operations{
 		SnapshotOperation::root_metadata,

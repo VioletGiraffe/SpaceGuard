@@ -7,8 +7,6 @@
 
 #include <algorithm>
 
-using namespace SpaceGuard;
-
 TEST_CASE("ThinIoFilesystemAccess forwards native filesystem operations", "[filesystem-access][integration]")
 {
 	QTemporaryDir directory;

@@ -7,8 +7,6 @@
 #include <stdint.h>
 #include <vector>
 
-namespace SpaceGuard {
-
 enum class ChangeDirection : uint8_t {
 	unchanged,
 	increase,
@@ -85,5 +83,3 @@ struct SnapshotComparisonResult
 
 [[nodiscard]] std::expected<SnapshotComparisonResult, SnapshotComparisonError> compareSnapshots(
 	const Snapshot& baseline, const Snapshot& current, uint64_t allocatedIncreaseThreshold);
-
-} // namespace SpaceGuard

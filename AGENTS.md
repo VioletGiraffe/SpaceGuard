@@ -49,6 +49,10 @@ The dependency directories above are Git submodules. Treat each as a separate re
 changes inside one while working on SpaceGuard. A task that changes a submodule should keep that submodule's diff
 self-contained and reviewable.
 
+SpaceGuard product types live in the global namespace: this executable is already the top-level application boundary,
+so a redundant application-wide namespace adds noise without disambiguating library clients. Keep focused internal
+namespaces such as `SnapshotInternal` where they genuinely group an implementation detail.
+
 ## Filesystem design direction
 
 - `thin_io` supplies synchronous single-operation native primitives; SpaceGuard supplies scan policy and concurrency.

@@ -12,7 +12,6 @@
 #include <mutex>
 #include <utility>
 
-namespace SpaceGuard {
 namespace {
 
 SnapshotEntryMetadata snapshotMetadata(const thin_io::entry_metadata& metadata)
@@ -355,5 +354,3 @@ SnapshotScanResult scanSnapshot(
 {
 	return Scanner{filesystem, canceled, std::move(progressCallback), workerPool}.scan(normalizedRootPath);
 }
-
-} // namespace SpaceGuard

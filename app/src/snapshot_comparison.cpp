@@ -7,7 +7,6 @@
 #include <set>
 #include <utility>
 
-namespace SpaceGuard {
 namespace {
 
 struct ComparedEntryAccounting
@@ -374,5 +373,3 @@ std::expected<SnapshotComparisonResult, SnapshotComparisonError> compareSnapshot
 		baseline.rootPath, allocatedIncreaseThreshold, result);
 	return result;
 }
-
-} // namespace SpaceGuard

@@ -2,11 +2,11 @@
 
 #include "snapshot_comparison.h"
 
+#include <QTimeZone>
+
 #include <algorithm>
 #include <limits>
 #include <utility>
-
-using namespace SpaceGuard;
 
 namespace {
 
@@ -69,8 +69,8 @@ Snapshot makeSnapshot()
 	snapshot.root.metadata->identity = entryIdentity(Filesystem, 1);
 	snapshot.filesystemSpaceAtStart = thin_io::filesystem_space{1000, 510, 410, Filesystem};
 	snapshot.filesystemSpaceAtCompletion = thin_io::filesystem_space{1000, 500, 400, Filesystem};
-	snapshot.scanStartedAtUtc = QDateTime::fromMSecsSinceEpoch(1000, Qt::UTC);
-	snapshot.scanCompletedAtUtc = QDateTime::fromMSecsSinceEpoch(2000, Qt::UTC);
+	snapshot.scanStartedAtUtc = QDateTime::fromMSecsSinceEpoch(1000, QTimeZone::UTC);
+	snapshot.scanCompletedAtUtc = QDateTime::fromMSecsSinceEpoch(2000, QTimeZone::UTC);
 	return snapshot;
 }
 

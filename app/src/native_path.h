@@ -7,8 +7,6 @@
 
 #include <optional>
 
-namespace SpaceGuard {
-
 #ifdef _WIN32
 using NativePath = QString;
 using NativeName = QString;
@@ -25,5 +23,3 @@ using NativePathCharacter = char;
 [[nodiscard]] NativePath appendNativeName(const NativePath& parentPath, const NativeName& name);
 [[nodiscard]] QString nativePathForDisplay(const NativePath& path);
 [[nodiscard]] const NativePathCharacter* nativePathData(const NativePath& path) noexcept;
-
-} // namespace SpaceGuard
