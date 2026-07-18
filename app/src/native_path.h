@@ -20,6 +20,7 @@ using NativePathCharacter = char;
 #endif
 
 [[nodiscard]] std::optional<NativePath> normalizedAbsoluteNativePath(const QString& path);
+[[nodiscard]] bool isAbsoluteNativePath(const NativePath& path) noexcept;
 [[nodiscard]] NativeName nativeNameFromThinIo(const thin_io::native_string& name);
 [[nodiscard]] NativePath appendNativeName(const NativePath& parentPath, const NativeName& name);
 [[nodiscard]] QString nativePathForDisplay(const NativePath& path);

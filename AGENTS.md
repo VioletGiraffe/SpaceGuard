@@ -10,16 +10,17 @@ The product-specific code is currently small and lives in `app/src/`:
 
 - `snapshot.{h,cpp}` owns the factual native-name tree, derived accounting state, and validated atomic persistence.
 - `snapshot_comparison.{h,cpp}` owns exact-only tree comparison, root eligibility, and free-space reconciliation.
+- `snapshot_scanner.{h,cpp}` owns the synchronous native scan and returns typed completed, failed, or canceled
+  outcomes.
 - `mainwindow.{h,cpp,ui}` still contains the prototype scan/compare workflow and is awaiting migration to the new model.
 - Snapshot files use the `.spaceguard` extension and a versioned, platform-marked `QDataStream`/`qCompress` format
   written through `QSaveFile`. Legacy prototype snapshots are rejected.
 
-The application is in a staged replacement of the prototype. The final snapshot model and persistence are present;
-the old UI intentionally does not have a temporary compatibility layer and will become buildable again when the
-scanner and workflow adopt the new model. Deterministic allocated-size/hard-link accounting and typed comparison are
-implemented for constructed snapshots. Remaining work includes trustworthy native scanning, off-main-thread
-multithreaded traversal, UI integration, and progress/cancellation. Performance and memory consumption should be kept
-in mind but are not primary design drivers.
+The application is in a staged replacement of the prototype. The final snapshot model, persistence, deterministic
+accounting/comparison, and synchronous native scan are present. The old UI intentionally does not have a temporary
+compatibility layer and will become buildable again when the asynchronous workflow adopts the new model. Remaining
+work includes off-main-thread ownership/publication, multithreaded traversal, progress, and UI integration. Performance
+and memory consumption should be kept in mind but are not primary design drivers.
 
 Windows is the primary platform. macOS and Linux support are desired.
 

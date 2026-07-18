@@ -43,7 +43,8 @@ SOURCES += \
 	src/filesystem_access.cpp \
 	src/native_path.cpp \
 	src/snapshot.cpp \
-	src/snapshot_comparison.cpp
+	src/snapshot_comparison.cpp \
+	src/snapshot_scanner.cpp
 
 ###################################################
 #                 LIBS
@@ -101,4 +102,5 @@ HEADERS += \
 	src/settings.h \
 	src/snapshot.h \
 	src/snapshot_comparison.h \
-	src/snapshot_internal.h
+	src/snapshot_internal.h \
+	src/snapshot_scanner.h

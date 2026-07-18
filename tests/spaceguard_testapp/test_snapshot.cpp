@@ -119,10 +119,12 @@ Snapshot makeSnapshot(const bool reverseInsertionOrder = false)
 		SnapshotOperation::directory_enumeration,
 		SnapshotOperation::entry_metadata,
 		SnapshotOperation::filesystem_space_at_start,
-		SnapshotOperation::filesystem_space_at_completion
+		SnapshotOperation::filesystem_space_at_completion,
+		SnapshotOperation::entry_changed_during_scan
 	};
 	for (size_t i = 0; i < operations.size(); ++i)
-		snapshot.diagnostics.push_back({snapshot.rootPath, operations[i], static_cast<thin_io::filesystem_error_code>(5 + i)});
+		snapshot.diagnostics.push_back({snapshot.rootPath, operations[i], operations[i] == SnapshotOperation::entry_changed_during_scan
+			? std::nullopt : std::optional{static_cast<thin_io::filesystem_error_code>(5 + i)}});
 	return snapshot;
 }
 
@@ -236,9 +238,12 @@ TEST_CASE("Snapshot loader rejects incompatible formats before reading the paylo
 	checkLoadError(path, qCompress("prototype snapshot"), SnapshotLoadErrorCode::unsupported_legacy_format);
 	checkLoadError(path, valid.first(4), SnapshotLoadErrorCode::truncated);
 
+	QByteArray old = valid;
+	qToLittleEndian<quint16>(1, reinterpret_cast<uchar*>(old.data() + 8));
+	checkLoadError(path, old, SnapshotLoadErrorCode::unsupported_version);
+
 	QByteArray future = valid;
-	future[8] = 2;
-	future[9] = 0;
+	qToLittleEndian<quint16>(Snapshot::CurrentFormatVersion + 1, reinterpret_cast<uchar*>(future.data() + 8));
 	checkLoadError(path, future, SnapshotLoadErrorCode::unsupported_version);
 
 	QByteArray otherPlatform = valid;
@@ -282,7 +287,7 @@ TEST_CASE("Snapshot loader distinguishes damaged payloads", "[snapshot][persiste
 	checkLoadError(path, replacePayload(valid, invalidEnumPayload), SnapshotLoadErrorCode::corrupt_data);
 
 	invalidEnumPayload = uncompressedPayload(valid);
-	invalidEnumPayload[invalidEnumPayload.size() - 9] = static_cast<char>(0xFF);
+	invalidEnumPayload[invalidEnumPayload.size() - 2] = static_cast<char>(0xFF);
 	checkLoadError(path, replacePayload(valid, invalidEnumPayload), SnapshotLoadErrorCode::corrupt_data);
 
 	QByteArray oversizedCountPayload = uncompressedPayload(valid);

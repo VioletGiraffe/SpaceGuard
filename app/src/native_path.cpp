@@ -7,6 +7,23 @@
 
 namespace SpaceGuard {
 
+bool isAbsoluteNativePath(const NativePath& path) noexcept
+{
+	if (path.isEmpty())
+		return false;
+
+#ifdef _WIN32
+	if (path.contains(QChar{}))
+		return false;
+	if (path.startsWith(R"(\\?\)"))
+		return path.size() > 4;
+	return (path.size() >= 3 && path[1] == ':' && (path[2] == '\\' || path[2] == '/'))
+		|| (path.size() > 2 && (path.startsWith(R"(\\)") || path.startsWith("//")));
+#else
+	return !path.contains('\0') && path.startsWith('/');
+#endif
+}
+
 std::optional<NativePath> normalizedAbsoluteNativePath(const QString& path)
 {
 	if (path.isEmpty())

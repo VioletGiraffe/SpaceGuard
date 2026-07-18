@@ -232,21 +232,7 @@ bool isValidNativeName(const NativeName& name)
 
 bool isValidRootPath(const NativePath& path)
 {
-	if (path.isEmpty())
-		return false;
-	if (path.size() > MaximumNativeStringLength)
-		return false;
-#ifdef _WIN32
-	if (path.contains(QChar{}))
-		return false;
-	if (path.startsWith(R"(\\?\)"))
-		return path.size() > 4;
-	return (path.size() >= 3 && path[1] == ':' && (path[2] == '\\' || path[2] == '/'))
-		|| (path.size() > 2 && path.startsWith(R"(\\)"))
-		|| (path.size() > 2 && path.startsWith("//"));
-#else
-	return !path.contains('\0') && path.startsWith('/');
-#endif
+	return path.size() <= MaximumNativeStringLength && isAbsoluteNativePath(path);
 }
 
 bool isValidEntry(const SnapshotEntry& entry, const uint32_t depth, uint64_t& totalEntryCount)
@@ -347,7 +333,9 @@ bool isValidSnapshot(const Snapshot& snapshot)
 
 	for (const SnapshotDiagnostic& diagnostic : snapshot.diagnostics)
 	{
-		if (!isValidRootPath(diagnostic.path) || diagnostic.operation > SnapshotOperation::filesystem_space_at_completion)
+		if (!isValidRootPath(diagnostic.path)
+			|| diagnostic.operation > SnapshotOperation::entry_changed_during_scan
+			|| ((diagnostic.operation == SnapshotOperation::entry_changed_during_scan) == diagnostic.nativeErrorCode.has_value()))
 			return false;
 	}
 	return true;
@@ -472,7 +460,9 @@ QByteArray serializePayload(const Snapshot& snapshot)
 	{
 		writeNativeString(stream, diagnostic.path);
 		writeEnum(stream, diagnostic.operation);
-		stream << static_cast<qint64>(diagnostic.nativeErrorCode);
+		writeBool(stream, diagnostic.nativeErrorCode.has_value());
+		if (diagnostic.nativeErrorCode)
+			stream << static_cast<qint64>(*diagnostic.nativeErrorCode);
 	}
 
 	return stream.status() == QDataStream::Ok ? payload : QByteArray{};
@@ -516,19 +506,25 @@ PayloadReadResult deserializePayload(const QByteArray& payload, Snapshot& snapsh
 	{
 		SnapshotDiagnostic diagnostic;
 		uint8_t operation = 0;
+		bool hasNativeErrorCode = false;
 		qint64 nativeErrorCode = 0;
-		if (!readNativeString(stream, diagnostic.path) || !readByte(stream, operation))
+		if (!readNativeString(stream, diagnostic.path) || !readByte(stream, operation) || !readBool(stream, hasNativeErrorCode))
 			return stream.status() == QDataStream::ReadPastEnd ? PayloadReadResult::truncated : PayloadReadResult::corrupt;
-		stream >> nativeErrorCode;
-		if (stream.status() != QDataStream::Ok)
-			return PayloadReadResult::truncated;
-		if (operation > static_cast<uint8_t>(SnapshotOperation::filesystem_space_at_completion)
-			|| nativeErrorCode < std::numeric_limits<thin_io::filesystem_error_code>::min()
-			|| nativeErrorCode > std::numeric_limits<thin_io::filesystem_error_code>::max())
+		if (hasNativeErrorCode)
+		{
+			stream >> nativeErrorCode;
+			if (stream.status() != QDataStream::Ok)
+				return PayloadReadResult::truncated;
+		}
+		if (operation > static_cast<uint8_t>(SnapshotOperation::entry_changed_during_scan)
+			|| (hasNativeErrorCode
+				&& (nativeErrorCode < std::numeric_limits<thin_io::filesystem_error_code>::min()
+					|| nativeErrorCode > std::numeric_limits<thin_io::filesystem_error_code>::max())))
 			return PayloadReadResult::corrupt;
 
 		diagnostic.operation = static_cast<SnapshotOperation>(operation);
-		diagnostic.nativeErrorCode = static_cast<thin_io::filesystem_error_code>(nativeErrorCode);
+		if (hasNativeErrorCode)
+			diagnostic.nativeErrorCode = static_cast<thin_io::filesystem_error_code>(nativeErrorCode);
 		snapshot.diagnostics.push_back(std::move(diagnostic));
 	}
 

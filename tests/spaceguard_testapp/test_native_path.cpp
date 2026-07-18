@@ -10,6 +10,12 @@ TEST_CASE("Native roots must be absolute and are normalized", "[native-path]")
 {
 	CHECK_FALSE(normalizedAbsoluteNativePath({}));
 	CHECK_FALSE(normalizedAbsoluteNativePath("relative/path"));
+	CHECK_FALSE(isAbsoluteNativePath({}));
+#ifdef _WIN32
+	CHECK_FALSE(isAbsoluteNativePath(QStringLiteral("relative/path")));
+#else
+	CHECK_FALSE(isAbsoluteNativePath(QByteArray{"relative/path"}));
+#endif
 
 #ifdef _WIN32
 	const auto path = normalizedAbsoluteNativePath(R"(C:\folder\.\child\..\leaf)");
@@ -20,6 +26,14 @@ TEST_CASE("Native roots must be absolute and are normalized", "[native-path]")
 	REQUIRE(path);
 	CHECK(*path == "/folder/leaf");
 #endif
+	CHECK(isAbsoluteNativePath(*path));
+	NativePath embeddedNull = *path;
+#ifdef _WIN32
+	embeddedNull.push_back(QChar{});
+#else
+	embeddedNull.push_back('\0');
+#endif
+	CHECK_FALSE(isAbsoluteNativePath(embeddedNull));
 }
 
 TEST_CASE("Native child paths are joined before display conversion", "[native-path]")

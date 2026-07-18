@@ -37,7 +37,8 @@ enum class SnapshotOperation : uint8_t {
 	directory_enumeration,
 	entry_metadata,
 	filesystem_space_at_start,
-	filesystem_space_at_completion
+	filesystem_space_at_completion,
+	entry_changed_during_scan
 };
 
 struct SnapshotEntryMetadata
@@ -78,7 +79,7 @@ struct SnapshotDiagnostic
 {
 	NativePath path;
 	SnapshotOperation operation = SnapshotOperation::entry_metadata;
-	thin_io::filesystem_error_code nativeErrorCode = 0;
+	std::optional<thin_io::filesystem_error_code> nativeErrorCode;
 
 	[[nodiscard]] bool operator==(const SnapshotDiagnostic&) const = default;
 };
@@ -133,7 +134,7 @@ struct SnapshotLoadError
 
 struct Snapshot
 {
-	static constexpr uint16_t CurrentFormatVersion = 1;
+	static constexpr uint16_t CurrentFormatVersion = 2;
 
 	NativePath rootPath;
 	SnapshotEntry root;

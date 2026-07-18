@@ -55,10 +55,12 @@ SOURCES += \
 	../../app/src/native_path.cpp \
 	../../app/src/snapshot.cpp \
 	../../app/src/snapshot_comparison.cpp \
+	../../app/src/snapshot_scanner.cpp \
 	test_filesystem_access.cpp \
 	test_native_path.cpp \
 	test_snapshot.cpp \
 	test_snapshot_comparison.cpp \
+	test_snapshot_scanner.cpp \
 	tests_main.cpp
 
 HEADERS += \
@@ -66,4 +68,5 @@ HEADERS += \
 	../../app/src/native_path.h \
 	../../app/src/snapshot.h \
 	../../app/src/snapshot_comparison.h \
-	../../app/src/snapshot_internal.h
+	../../app/src/snapshot_internal.h \
+	../../app/src/snapshot_scanner.h
