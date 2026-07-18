@@ -38,6 +38,7 @@ private:
 	void runScan(NativePath rootPath, uint64_t generation, const std::shared_ptr<RequestState>& request);
 	void enqueueProgress(uint64_t generation, const SnapshotScanProgress& progress);
 
+private:
 	CExecutionQueue& m_publicationQueue;
 	SnapshotScanRunnerCallbacks m_callbacks;
 	const int m_progressQueueTag;

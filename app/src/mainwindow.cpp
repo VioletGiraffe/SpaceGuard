@@ -20,6 +20,7 @@
 #include <algorithm>
 #include <assert.h>
 #include <exception>
+#include <map>
 #include <utility>
 
 namespace {
@@ -165,6 +166,18 @@ QString diagnosticOperationName(const SnapshotOperation operation)
 	return "Unknown";
 }
 
+QString scanIssueSummary(const std::vector<SnapshotDiagnostic>& diagnostics)
+{
+	std::map<SnapshotOperation, uint64_t> issueCounts;
+	for (const SnapshotDiagnostic& diagnostic : diagnostics)
+		++issueCounts[diagnostic.operation];
+
+	QStringList issueKinds;
+	for (const auto& [operation, count] : issueCounts)
+		issueKinds.push_back(QString{"%1 (%2)"}.arg(diagnosticOperationName(operation)).arg(static_cast<qulonglong>(count)));
+	return issueKinds.join(", ");
+}
+
 QString excludedRegionReason(const ComparisonExcludedRegion& region)
 {
 	QStringList reasons;
@@ -215,6 +228,21 @@ QString nativeErrorDescription(const std::optional<thin_io::filesystem_error_cod
 	if (!code)
 		return "No native error code was available.";
 	return QString::fromLocal8Bit(thin_io::format_filesystem_error(thin_io::filesystem_error{*code}).c_str());
+}
+
+void appendSnapshotDiagnostics(QTableWidget& table, const QString& source, const Snapshot& snapshot)
+{
+	for (const SnapshotDiagnostic& diagnostic : snapshot.diagnostics)
+	{
+		const int row = table.rowCount();
+		table.insertRow(row);
+		table.setItem(row, 0, new QTableWidgetItem{source});
+		table.setItem(row, 1, new QTableWidgetItem{diagnosticOperationName(diagnostic.operation)});
+		table.setItem(row, 2, new QTableWidgetItem{nativeErrorCodeText(diagnostic.nativeErrorCode)});
+		table.setItem(row, 3, new QTableWidgetItem{nativeErrorDescription(diagnostic.nativeErrorCode)});
+		table.setItem(row, 4, new QTableWidgetItem{nativePathForDisplay(diagnostic.path)});
+		setRowPath(table, row, diagnostic.path);
+	}
 }
 
 } // namespace
@@ -395,10 +423,18 @@ void MainWindow::scanCompleted(
 
 	const Snapshot& snapshot = std::get<Snapshot>(*result);
 	const std::shared_ptr<const Snapshot> completedSnapshot{result, &snapshot};
-	m_ui->scanStatusLabel->setText(QString{"Scan complete: %1 issue(s)."}.arg(static_cast<qulonglong>(snapshot.diagnostics.size())));
+	if (snapshot.diagnostics.empty())
+		m_ui->scanStatusLabel->setText("Scan complete: no issues.");
+	else
+	{
+		const auto issueCount = static_cast<qulonglong>(snapshot.diagnostics.size());
+		m_ui->scanStatusLabel->setText(QString{"Scan complete: %1 issue%2 - %3."}
+			.arg(issueCount).arg(issueCount == 1 ? "" : "s").arg(scanIssueSummary(snapshot.diagnostics)));
+	}
 	m_ui->scanDurationLabel->setText("Scan time: " + elapsedTime);
 	if (purpose == ScanPurpose::create_snapshot)
 	{
+		populateCompletedScanDiagnostics(snapshot);
 		saveCreatedSnapshot(snapshot);
 		return;
 	}
@@ -423,15 +459,19 @@ void MainWindow::saveCreatedSnapshot(const Snapshot& snapshot)
 {
 	QStringList qualifications;
 	if (!snapshot.diagnostics.empty())
-		qualifications.push_back(QString{"%1 scan issue(s)"}.arg(static_cast<qulonglong>(snapshot.diagnostics.size())));
+	{
+		const auto issueCount = static_cast<qulonglong>(snapshot.diagnostics.size());
+		qualifications.push_back(QString{"%1 scan issue%2: %3"}
+			.arg(issueCount).arg(issueCount == 1 ? "" : "s").arg(scanIssueSummary(snapshot.diagnostics)));
+	}
 	if (!snapshot.root.derived.subtreeCoverageComplete)
 		qualifications.push_back("incomplete directory coverage");
 	if (!snapshot.root.derived.subtreeAllocatedSize)
 		qualifications.push_back("incomplete allocated-size accounting");
 	if (!qualifications.empty())
 	{
-		const QString message = "The completed snapshot has " + qualifications.join(", ")
-			+ ". Some contents or allocated sizes may be missing.\n\nSave this snapshot anyway?";
+		const QString message = "The completed snapshot is incomplete:\n\n- " + qualifications.join("\n- ")
+			+ "\n\nSome contents or allocated sizes may be missing.\n\nSave this snapshot anyway?";
 		if (QMessageBox::warning(this, "Incomplete snapshot", message, QMessageBox::Yes | QMessageBox::No, QMessageBox::No) != QMessageBox::Yes)
 			return;
 	}
@@ -559,25 +599,20 @@ void MainWindow::clearComparisonDisplay()
 void MainWindow::populateDiagnostics()
 {
 	m_ui->diagnosticsTable->setRowCount(0);
-	const auto addSnapshotDiagnostics = [this](const QString& source, const Snapshot& snapshot) {
-		for (const SnapshotDiagnostic& diagnostic : snapshot.diagnostics)
-		{
-			const int row = m_ui->diagnosticsTable->rowCount();
-			m_ui->diagnosticsTable->insertRow(row);
-			m_ui->diagnosticsTable->setItem(row, 0, new QTableWidgetItem{source});
-			m_ui->diagnosticsTable->setItem(row, 1, new QTableWidgetItem{diagnosticOperationName(diagnostic.operation)});
-			m_ui->diagnosticsTable->setItem(row, 2, new QTableWidgetItem{nativeErrorCodeText(diagnostic.nativeErrorCode)});
-			m_ui->diagnosticsTable->setItem(row, 3, new QTableWidgetItem{nativeErrorDescription(diagnostic.nativeErrorCode)});
-			m_ui->diagnosticsTable->setItem(row, 4, new QTableWidgetItem{nativePathForDisplay(diagnostic.path)});
-			setRowPath(*m_ui->diagnosticsTable, row, diagnostic.path);
-		}
-	};
-
 	if (m_baselineSnapshot)
-		addSnapshotDiagnostics("Baseline", *m_baselineSnapshot);
+		appendSnapshotDiagnostics(*m_ui->diagnosticsTable, "Baseline", *m_baselineSnapshot);
 	if (m_currentSnapshot)
-		addSnapshotDiagnostics("Current", *m_currentSnapshot);
+		appendSnapshotDiagnostics(*m_ui->diagnosticsTable, "Current scan", *m_currentSnapshot);
 	m_ui->resultTabs->setTabText(2, QString{"Scan issues (%1)"}.arg(m_ui->diagnosticsTable->rowCount()));
+}
+
+void MainWindow::populateCompletedScanDiagnostics(const Snapshot& snapshot)
+{
+	m_ui->diagnosticsTable->setRowCount(0);
+	appendSnapshotDiagnostics(*m_ui->diagnosticsTable, "Current scan", snapshot);
+	m_ui->resultTabs->setTabText(2, QString{"Scan issues (%1)"}.arg(m_ui->diagnosticsTable->rowCount()));
+	if (!snapshot.diagnostics.empty())
+		m_ui->resultTabs->setCurrentIndex(2);
 }
 
 void MainWindow::openTableItem(const QTableWidgetItem* item)

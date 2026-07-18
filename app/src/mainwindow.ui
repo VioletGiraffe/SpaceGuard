@@ -74,6 +74,7 @@
       <item>
        <widget class="QLabel" name="scanStatusLabel">
         <property name="text"><string>Ready.</string></property>
+        <property name="wordWrap"><bool>true</bool></property>
        </widget>
       </item>
       <item>

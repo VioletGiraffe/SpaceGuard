@@ -43,6 +43,7 @@ private:
 	void displayComparison(const SnapshotComparisonResult& comparison);
 	void clearComparisonDisplay();
 	void populateDiagnostics();
+	void populateCompletedScanDiagnostics(const Snapshot& snapshot);
 	void openTableItem(const QTableWidgetItem* item);
 
 	std::unique_ptr<Ui::MainWindow> m_ui;
