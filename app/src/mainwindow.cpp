@@ -18,6 +18,7 @@
 #include <QUrl>
 
 #include <algorithm>
+#include <assert.h>
 #include <exception>
 #include <utility>
 
@@ -42,6 +43,21 @@ QString formatBytes(const uint64_t bytes)
 	if (bytes < TiB)
 		return QString::number(static_cast<double>(bytes) / GiB, 'f', 1) + " GiB";
 	return QString::number(static_cast<double>(bytes) / TiB, 'f', 1) + " TiB";
+}
+
+QString formatElapsedTime(const qint64 elapsedMilliseconds)
+{
+	if (elapsedMilliseconds < 1000)
+		return "<1 s";
+
+	const qint64 totalSeconds = elapsedMilliseconds / 1000;
+	const qint64 seconds = totalSeconds % 60;
+	const qint64 totalMinutes = totalSeconds / 60;
+	if (totalMinutes == 0)
+		return QString{"%1 s"}.arg(totalSeconds);
+	if (totalMinutes < 60)
+		return QString{"%1 min %2 s"}.arg(totalMinutes).arg(seconds);
+	return QString{"%1 h %2 min %3 s"}.arg(totalMinutes / 60).arg(totalMinutes % 60).arg(seconds);
 }
 
 QString formatChange(const std::optional<MagnitudeChange>& change)
@@ -219,6 +235,10 @@ MainWindow::MainWindow(QWidget* parent)
 	connect(m_ui->cancelScanButton, &QAbstractButton::clicked, this, [this] { cancelScan(); });
 	connect(m_ui->thresholdSpinBox, &QSpinBox::valueChanged, this, [this](int) { recalculateComparison(); });
 	connect(&m_publicationTimer, &QTimer::timeout, this, [this] { m_publicationQueue.exec(); });
+	connect(&m_scanElapsedUpdateTimer, &QTimer::timeout, this, [this] {
+		assert(m_scanElapsedTimer.isValid());
+		m_ui->scanDurationLabel->setText("Elapsed: " + formatElapsedTime(m_scanElapsedTimer.elapsed()));
+	});
 	connect(m_ui->changesTable, &QTableWidget::itemActivated, this, [this](QTableWidgetItem* item) { openTableItem(item); });
 	connect(m_ui->excludedTable, &QTableWidget::itemActivated, this, [this](QTableWidgetItem* item) { openTableItem(item); });
 	connect(m_ui->diagnosticsTable, &QTableWidget::itemActivated, this, [this](QTableWidgetItem* item) { openTableItem(item); });
@@ -237,12 +257,14 @@ MainWindow::MainWindow(QWidget* parent)
 	m_ui->rootPathEdit->setText(settings.value(Settings::Path).toString());
 	m_ui->thresholdSpinBox->setValue(settings.value(Settings::Threshold, 1024).toInt());
 	m_ui->thresholdSpinBox->setEnabled(false);
+	m_scanElapsedUpdateTimer.setInterval(1000);
 	m_publicationTimer.start(33);
 }
 
 MainWindow::~MainWindow()
 {
 	m_publicationTimer.stop();
+	m_scanElapsedUpdateTimer.stop();
 	CSettings settings;
 	settings.setValue(Settings::Path, m_ui->rootPathEdit->text());
 	settings.setValue(Settings::Threshold, m_ui->thresholdSpinBox->value());
@@ -315,8 +337,11 @@ void MainWindow::beginScan(const ScanPurpose purpose, const NativePath& rootPath
 		}
 		m_activePurpose = purpose;
 		m_activeGeneration = *generation;
+		m_scanElapsedTimer.start();
+		m_scanElapsedUpdateTimer.start();
 		m_ui->scanStatusLabel->setText(purpose == ScanPurpose::create_snapshot ? "Creating snapshot..." : "Scanning current state...");
 		m_ui->scanCountsLabel->clear();
+		m_ui->scanDurationLabel->setText("Elapsed: <1 s");
 		setScanActive(true);
 	}
 	catch (const std::exception& error)
@@ -346,6 +371,10 @@ void MainWindow::scanCompleted(
 		return;
 
 	const ScanPurpose purpose = *m_activePurpose;
+	m_scanElapsedUpdateTimer.stop();
+	assert(m_scanElapsedTimer.isValid());
+	const QString elapsedTime = formatElapsedTime(m_scanElapsedTimer.elapsed());
+	m_scanElapsedTimer.invalidate();
 	m_activeGeneration.reset();
 	m_activePurpose.reset();
 	setScanActive(false);
@@ -353,11 +382,13 @@ void MainWindow::scanCompleted(
 	if (std::holds_alternative<SnapshotScanCanceled>(*result))
 	{
 		m_ui->scanStatusLabel->setText("Scan canceled.");
+		m_ui->scanDurationLabel->setText("Stopped after: " + elapsedTime);
 		return;
 	}
 	if (const auto* failure = std::get_if<SnapshotScanFailure>(result.get()))
 	{
 		m_ui->scanStatusLabel->setText("Scan failed.");
+		m_ui->scanDurationLabel->setText("Stopped after: " + elapsedTime);
 		QMessageBox::critical(this, "Scan failed", scanFailureDescription(*failure));
 		return;
 	}
@@ -365,6 +396,7 @@ void MainWindow::scanCompleted(
 	const Snapshot& snapshot = std::get<Snapshot>(*result);
 	const std::shared_ptr<const Snapshot> completedSnapshot{result, &snapshot};
 	m_ui->scanStatusLabel->setText(QString{"Scan complete: %1 issue(s)."}.arg(static_cast<qulonglong>(snapshot.diagnostics.size())));
+	m_ui->scanDurationLabel->setText("Scan time: " + elapsedTime);
 	if (purpose == ScanPurpose::create_snapshot)
 	{
 		saveCreatedSnapshot(snapshot);

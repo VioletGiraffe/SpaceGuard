@@ -95,6 +95,11 @@
         <property name="text"><string/></property>
        </widget>
       </item>
+      <item>
+       <widget class="QLabel" name="scanDurationLabel">
+        <property name="text"><string>Scan time: -</string></property>
+       </widget>
+      </item>
      </layout>
     </item>
     <item>

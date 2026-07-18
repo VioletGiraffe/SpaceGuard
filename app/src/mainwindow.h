@@ -3,6 +3,7 @@
 #include "snapshot_comparison.h"
 #include "snapshot_scan_runner.h"
 
+#include <QElapsedTimer>
 #include <QMainWindow>
 #include <QTimer>
 
@@ -48,6 +49,8 @@ private:
 	CExecutionQueue m_publicationQueue;
 	SnapshotScanRunner m_scanRunner;
 	QTimer m_publicationTimer;
+	QElapsedTimer m_scanElapsedTimer;
+	QTimer m_scanElapsedUpdateTimer;
 
 	std::optional<uint64_t> m_activeGeneration;
 	std::optional<ScanPurpose> m_activePurpose;
