@@ -264,7 +264,7 @@ TEST_CASE("Snapshot scan runner preserves fatal and recoverable outcomes", "[sna
 		CHECK(failure->code == SnapshotScanFailureCode::root_metadata_unavailable);
 	}
 
-	SECTION("unexpected exceptions cannot escape the scan thread")
+	SECTION("unexpected exceptions cannot escape the scan job")
 	{
 		ControlledFilesystem filesystem{0, FilesystemBehavior::throw_unexpectedly};
 		ScopedTestFilesystemAccess filesystemBinding{filesystem};
@@ -330,7 +330,7 @@ TEST_CASE("Snapshot scan generations let receivers discard stale publication", "
 	CHECK(adoptedGenerations.front() == 2);
 }
 
-TEST_CASE("Snapshot scan runner destruction is safe at every scan-thread phase", "[snapshot][scan-runner]")
+TEST_CASE("Snapshot scan runner destruction is safe at every scan-job phase", "[snapshot][scan-runner]")
 {
 	SECTION("completion already queued")
 	{

@@ -48,6 +48,12 @@ struct SnapshotScanProgress
 using SnapshotScanResult = std::variant<Snapshot, SnapshotScanFailure, SnapshotScanCanceled>;
 using SnapshotScanProgressCallback = std::function<void(const SnapshotScanProgress&)>;
 
+// Runs traversal entirely on the calling thread.
 [[nodiscard]] SnapshotScanResult scanSnapshot(
 	const NativePath& normalizedRootPath, const std::atomic_bool& canceled,
-	SnapshotScanProgressCallback progressCallback = {}, CWorkerThreadPool* workerPool = nullptr);
+	SnapshotScanProgressCallback progressCallback = {});
+
+// The calling thread participates, so maxWorkersCount() is the total traversal participant count.
+[[nodiscard]] SnapshotScanResult scanSnapshot(
+	const NativePath& normalizedRootPath, const std::atomic_bool& canceled, CWorkerThreadPool& workerPool,
+	SnapshotScanProgressCallback progressCallback = {});

@@ -21,6 +21,7 @@
 #include <future>
 #include <map>
 #include <mutex>
+#include <optional>
 #include <random>
 #include <stdexcept>
 #include <string>
@@ -209,10 +210,19 @@ SnapshotScanFailure failedScan(const SnapshotScanResult& result)
 template<class Filesystem>
 SnapshotScanResult scanSnapshot(
 	const NativePath& normalizedRootPath, Filesystem& filesystem, const std::atomic_bool& canceled,
-	SnapshotScanProgressCallback progressCallback = {}, CWorkerThreadPool* workerPool = nullptr)
+	SnapshotScanProgressCallback progressCallback = {})
 {
 	ScopedTestFilesystemAccess binding{filesystem};
-	return ::scanSnapshot(normalizedRootPath, canceled, std::move(progressCallback), workerPool);
+	return ::scanSnapshot(normalizedRootPath, canceled, std::move(progressCallback));
+}
+
+template<class Filesystem>
+SnapshotScanResult scanSnapshot(
+	const NativePath& normalizedRootPath, Filesystem& filesystem, const std::atomic_bool& canceled,
+	CWorkerThreadPool& workerPool, SnapshotScanProgressCallback progressCallback = {})
+{
+	ScopedTestFilesystemAccess binding{filesystem};
+	return ::scanSnapshot(normalizedRootPath, canceled, workerPool, std::move(progressCallback));
 }
 
 std::filesystem::path filesystemPath(const NativePath& path)
@@ -507,8 +517,8 @@ TEST_CASE("Worker-pool snapshot scanning waits for discovered work and matches o
 
 	CWorkerThreadPool workerPool{3, "SpaceGuard scanner test"};
 	std::vector<SnapshotScanProgress> progress;
-	Snapshot parallelSnapshot = completedSnapshot(scanSnapshot(rootPath(), parallelFilesystem, canceled,
-		[&progress](const SnapshotScanProgress& value) { progress.push_back(value); }, &workerPool));
+	Snapshot parallelSnapshot = completedSnapshot(scanSnapshot(rootPath(), parallelFilesystem, canceled, workerPool,
+		[&progress](const SnapshotScanProgress& value) { progress.push_back(value); }));
 	CHECK(maximumConcurrentDirectoryCalls >= 2);
 	REQUIRE_FALSE(progress.empty());
 	for (size_t i = 1; i < progress.size(); ++i)
@@ -523,6 +533,28 @@ TEST_CASE("Worker-pool snapshot scanning waits for discovered work and matches o
 	parallelSnapshot.scanCompletedAtUtc = singleThreadSnapshot.scanCompletedAtUtc;
 	CHECK(parallelSnapshot == singleThreadSnapshot);
 	CHECK(parallelSnapshot.root.derived.subtreeAllocatedSize == singleThreadSnapshot.root.derived.subtreeAllocatedSize);
+}
+
+TEST_CASE("A one-thread scan pool runs the scan job and traversal on the same worker", "[snapshot][scanner][parallel]")
+{
+	FakeFilesystem referenceFilesystem;
+	FakeFilesystem pooledFilesystem;
+	configureParallelTree(referenceFilesystem);
+	configureParallelTree(pooledFilesystem);
+	std::atomic_bool canceled = false;
+	Snapshot reference = completedSnapshot(scanSnapshot(rootPath(), referenceFilesystem, canceled));
+
+	CWorkerThreadPool scanPool{1, "SpaceGuard one-thread scanner test"};
+	std::optional<SnapshotScanResult> pooledResult;
+	auto completed = scanPool.enqueueWithFuture([&] {
+		pooledResult.emplace(scanSnapshot(rootPath(), pooledFilesystem, canceled, scanPool));
+	});
+	completed.get();
+	REQUIRE(pooledResult);
+	Snapshot pooled = completedSnapshot(std::move(*pooledResult));
+	pooled.scanStartedAtUtc = reference.scanStartedAtUtc;
+	pooled.scanCompletedAtUtc = reference.scanCompletedAtUtc;
+	CHECK(pooled == reference);
 }
 
 TEST_CASE("Parallel snapshot scanning cancels without stranding idle workers", "[snapshot][scanner][parallel]")
@@ -545,7 +577,7 @@ TEST_CASE("Parallel snapshot scanning cancels without stranding idle workers", "
 
 	std::atomic_bool canceled = false;
 	CWorkerThreadPool workerPool{3, "SpaceGuard scanner cancellation test"};
-	auto scan = std::async(std::launch::async, [&] { return scanSnapshot(rootPath(), filesystem, canceled, {}, &workerPool); });
+	auto scan = std::async(std::launch::async, [&] { return scanSnapshot(rootPath(), filesystem, canceled, workerPool); });
 	bool reachedBlock = false;
 	{
 		std::unique_lock lock{blockMutex};
@@ -566,11 +598,11 @@ TEST_CASE("Parallel snapshot scanning cancels before newly discovered directorie
 	std::atomic_bool canceled = false;
 	CWorkerThreadPool workerPool{3, "SpaceGuard scanner publication cancellation test"};
 
-	const SnapshotScanResult result = scanSnapshot(rootPath(), filesystem, canceled,
+	const SnapshotScanResult result = scanSnapshot(rootPath(), filesystem, canceled, workerPool,
 		[&canceled](const SnapshotScanProgress& progress) {
 			if (progress.entriesDiscovered > 0)
 				canceled.store(true, std::memory_order_relaxed);
-		}, &workerPool);
+		});
 	CHECK(std::holds_alternative<SnapshotScanCanceled>(result));
 	CHECK(filesystem.listedPaths.size() == 1);
 }
@@ -587,7 +619,7 @@ TEST_CASE("Parallel snapshot scanning contains worker exceptions without deadloc
 
 	std::atomic_bool canceled = false;
 	CWorkerThreadPool workerPool{3, "SpaceGuard scanner exception test"};
-	auto scan = std::async(std::launch::async, [&] { return scanSnapshot(rootPath(), filesystem, canceled, {}, &workerPool); });
+	auto scan = std::async(std::launch::async, [&] { return scanSnapshot(rootPath(), filesystem, canceled, workerPool); });
 	REQUIRE(scan.wait_for(std::chrono::seconds{2}) == std::future_status::ready);
 	const SnapshotScanResult result = scan.get();
 	const auto* failure = std::get_if<SnapshotScanFailure>(&result);
@@ -616,7 +648,7 @@ TEST_CASE("Parallel snapshot output is deterministic across enumeration and sche
 				std::this_thread::yield();
 		};
 
-		Snapshot snapshot = completedSnapshot(scanSnapshot(rootPath(), filesystem, canceled, {}, &workerPool));
+		Snapshot snapshot = completedSnapshot(scanSnapshot(rootPath(), filesystem, canceled, workerPool));
 		snapshot.scanStartedAtUtc = reference.scanStartedAtUtc;
 		snapshot.scanCompletedAtUtc = reference.scanCompletedAtUtc;
 		CHECK(snapshot == reference);

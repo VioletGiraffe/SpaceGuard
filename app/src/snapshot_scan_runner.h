@@ -3,15 +3,13 @@
 #include "snapshot_scanner.h"
 
 #include "threading/cexecutionqueue.h"
-#include "threading/cinterruptablethread.h"
+#include "threading/cworkerthread.h"
 
 #include <functional>
 #include <memory>
 #include <mutex>
 #include <optional>
 #include <stdint.h>
-
-class CWorkerThreadPool;
 
 struct SnapshotScanRunnerCallbacks
 {
@@ -47,8 +45,7 @@ private:
 	uint64_t m_lastGeneration = 0;
 	bool m_scanInProgress = false;
 	std::shared_ptr<RequestState> m_activeRequest;
-	// Keep these last and in this order: reverse member destruction stops the scan thread before the worker pool it may use,
-	// while both still have access to all runner state above.
-	std::unique_ptr<CWorkerThreadPool> m_workerPool;
-	CInterruptableThread m_scanThread{"SpaceGuard snapshot scan"};
+	// Keep last: the scan job and its nested parallelFor helpers access the runner state above. The destructor retires
+	// the scan job while the pool can still run those helpers; reverse destruction then joins the workers before other state is released.
+	CWorkerThreadPool m_scanPool;
 };

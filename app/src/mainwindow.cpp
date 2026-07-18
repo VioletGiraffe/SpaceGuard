@@ -350,7 +350,7 @@ void MainWindow::beginScan(const ScanPurpose purpose, const NativePath& rootPath
 	}
 	catch (...)
 	{
-		QMessageBox::critical(this, "Cannot start scan", "The background scan thread could not be started.");
+		QMessageBox::critical(this, "Cannot start scan", "The background scan could not be started.");
 	}
 }
 

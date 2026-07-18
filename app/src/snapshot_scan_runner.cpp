@@ -1,7 +1,5 @@
 #include "snapshot_scan_runner.h"
 
-#include "threading/cworkerthread.h"
-
 #include <algorithm>
 #include <assert.h>
 #include <atomic>
@@ -12,16 +10,11 @@
 namespace {
 
 constexpr std::chrono::milliseconds ProgressPublicationInterval{100};
+constexpr uint64_t ScanJobTag = 1;
 
 uint32_t scanParticipantCount() noexcept
 {
 	return std::clamp(std::thread::hardware_concurrency(), 1u, 8u);
-}
-
-std::unique_ptr<CWorkerThreadPool> createScanWorkerPool()
-{
-	const uint32_t workerCount = scanParticipantCount() - 1;
-	return workerCount == 0 ? nullptr : std::make_unique<CWorkerThreadPool>(workerCount, "SpaceGuard snapshot scan");
 }
 
 int nextProgressQueueTag()
@@ -41,7 +34,7 @@ SnapshotScanRunner::SnapshotScanRunner(CExecutionQueue& publicationQueue, Snapsh
 	: m_publicationQueue{publicationQueue},
 	  m_callbacks{std::move(callbacks)},
 	  m_progressQueueTag{nextProgressQueueTag()},
-	  m_workerPool{createScanWorkerPool()}
+	  m_scanPool{scanParticipantCount(), "SpaceGuard snapshot scan"}
 {
 	assert(m_callbacks.completed);
 }
@@ -49,7 +42,7 @@ SnapshotScanRunner::SnapshotScanRunner(CExecutionQueue& publicationQueue, Snapsh
 SnapshotScanRunner::~SnapshotScanRunner()
 {
 	(void)cancel();
-	m_scanThread.interrupt();
+	m_scanPool.retire(ScanJobTag);
 }
 
 std::optional<uint64_t> SnapshotScanRunner::start(const NativePath& normalizedRootPath)
@@ -62,12 +55,11 @@ std::optional<uint64_t> SnapshotScanRunner::start(const NativePath& normalizedRo
 	auto request = std::make_shared<RequestState>();
 	m_scanInProgress = true;
 	m_activeRequest = request;
-	bool started = false;
 	try
 	{
-		started = m_scanThread.exec([this, rootPath{normalizedRootPath}, generation, request{std::move(request)}]() mutable {
+		m_scanPool.enqueue([this, rootPath{normalizedRootPath}, generation, request{std::move(request)}]() mutable {
 			runScan(std::move(rootPath), generation, request);
-		});
+		}, ScanJobTag);
 	}
 	catch (...)
 	{
@@ -75,8 +67,6 @@ std::optional<uint64_t> SnapshotScanRunner::start(const NativePath& normalizedRo
 		m_activeRequest.reset();
 		throw;
 	}
-	assert(started);
-	(void)started;
 	return generation;
 }
 
@@ -119,7 +109,7 @@ void SnapshotScanRunner::runScan(
 	SnapshotScanResult result = SnapshotScanCanceled{};
 	try
 	{
-		result = scanSnapshot(rootPath, request->canceled, reportProgress, m_workerPool.get());
+		result = scanSnapshot(rootPath, request->canceled, m_scanPool, reportProgress);
 	}
 	catch (...)
 	{

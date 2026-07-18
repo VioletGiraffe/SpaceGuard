@@ -43,12 +43,26 @@ void markMetadataUnavailable(SnapshotEntry& entry)
 class Scanner
 {
 public:
-	Scanner(const std::atomic_bool& canceled, SnapshotScanProgressCallback progressCallback, CWorkerThreadPool* workerPool)
-		: m_canceled{canceled}, m_progressCallback{std::move(progressCallback)}, m_workerPool{workerPool}
+	Scanner(const std::atomic_bool& canceled, SnapshotScanProgressCallback progressCallback)
+		: m_canceled{canceled}, m_progressCallback{std::move(progressCallback)}
 	{
 	}
 
 	SnapshotScanResult scan(const NativePath& rootPath)
+	{
+		return scanWithParticipants(rootPath, [this] { processDirectories(); });
+	}
+
+	SnapshotScanResult scan(const NativePath& rootPath, CWorkerThreadPool& workerPool)
+	{
+		return scanWithParticipants(rootPath, [this, &workerPool] {
+			workerPool.parallelFor(workerPool.maxWorkersCount(), [this](const std::size_t) noexcept { processDirectories(); });
+		});
+	}
+
+private:
+	template<class RunParticipants>
+	SnapshotScanResult scanWithParticipants(const NativePath& rootPath, RunParticipants&& runParticipants)
 	{
 		if (m_canceled.load(std::memory_order_relaxed))
 			return SnapshotScanCanceled{};
@@ -85,7 +99,7 @@ public:
 		if (!m_rootFilesystemIdentity)
 			m_rootFilesystemIdentity = startSpace->identity;
 
-		if (const auto rootFailure = scanDirectories(rootPath))
+		if (const auto rootFailure = scanDirectories(rootPath, std::forward<RunParticipants>(runParticipants)))
 			return *rootFailure;
 		if (m_canceled.load(std::memory_order_relaxed))
 			return SnapshotScanCanceled{};
@@ -117,7 +131,6 @@ public:
 		return std::move(m_snapshot);
 	}
 
-private:
 	struct DirectoryWork
 	{
 		NativePath path;
@@ -125,20 +138,12 @@ private:
 		bool isRoot = false;
 	};
 
-	std::optional<SnapshotScanFailure> scanDirectories(const NativePath& rootPath)
+	template<class RunParticipants>
+	std::optional<SnapshotScanFailure> scanDirectories(const NativePath& rootPath, RunParticipants&& runParticipants)
 	{
 		m_pendingDirectories.push_back({rootPath, &m_snapshot.root, true});
 		m_outstandingDirectories = 1;
-
-		if (m_workerPool)
-		{
-			const std::size_t participantCount = m_workerPool->maxWorkersCount() + 1;
-			m_workerPool->parallelFor(participantCount, [this](const std::size_t) noexcept { processDirectories(); });
-		}
-		else
-		{
-			processDirectories();
-		}
+		std::forward<RunParticipants>(runParticipants)();
 
 		assert(m_outstandingDirectories == 0);
 		assert(m_pendingDirectories.empty());
@@ -347,7 +352,6 @@ private:
 	SnapshotScanProgress m_progress;
 	std::optional<thin_io::mount_identity> m_rootMountIdentity;
 	std::optional<thin_io::filesystem_identity> m_rootFilesystemIdentity;
-	CWorkerThreadPool* m_workerPool;
 	std::mutex m_workMutex;
 	std::condition_variable m_workChanged;
 	std::deque<DirectoryWork> m_pendingDirectories;
@@ -360,8 +364,14 @@ private:
 } // namespace
 
 SnapshotScanResult scanSnapshot(
-	const NativePath& normalizedRootPath, const std::atomic_bool& canceled,
-	SnapshotScanProgressCallback progressCallback, CWorkerThreadPool* workerPool)
+	const NativePath& normalizedRootPath, const std::atomic_bool& canceled, SnapshotScanProgressCallback progressCallback)
 {
-	return Scanner{canceled, std::move(progressCallback), workerPool}.scan(normalizedRootPath);
+	return Scanner{canceled, std::move(progressCallback)}.scan(normalizedRootPath);
+}
+
+SnapshotScanResult scanSnapshot(
+	const NativePath& normalizedRootPath, const std::atomic_bool& canceled, CWorkerThreadPool& workerPool,
+	SnapshotScanProgressCallback progressCallback)
+{
+	return Scanner{canceled, std::move(progressCallback)}.scan(normalizedRootPath, workerPool);
 }

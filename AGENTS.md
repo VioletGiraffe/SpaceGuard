@@ -12,7 +12,7 @@ The product-specific code is currently small and lives in `app/src/`:
 - `snapshot_comparison.{h,cpp}` owns exact-only tree comparison, root eligibility, and free-space reconciliation.
 - `snapshot_scanner.{h,cpp}` owns the synchronous native scan API, single/parallel traversal, and typed completed,
   failed, or canceled outcomes.
-- `snapshot_scan_runner.{h,cpp}` owns the scan thread and worker pool, nonblocking cancellation, generation-tagged
+- `snapshot_scan_runner.{h,cpp}` owns the scan pool, nonblocking cancellation, generation-tagged
   immutable publication, and coalesced progress through a caller-owned execution queue.
 - `mainwindow.{h,cpp,ui}` owns the create/compare/cancel workflow, UI-thread publication draining, snapshot file
   dialogs, threshold-only recalculation, and qualified comparison presentation.
@@ -37,8 +37,8 @@ Top-level components:
 - `thin_io/`: native low-level file and filesystem I/O. Use it where Qt filesystem APIs cannot provide the required
   correctness or native metadata. Keep recursion, threading, cancellation, aggregation, and Qt adapters out of this
   library. See `thin_io/README.md` for its completed API contract and `doc/plan.md` for SpaceGuard integration.
-- `cpputils/`: general C++ utilities. Relevant here are `CWorkerThreadPool`, `CInterruptableThread`, and
-  `CExecutionQueue`; use these for background and multithreaded scan orchestration.
+- `cpputils/`: general C++ utilities. Relevant here are `CWorkerThreadPool` and `CExecutionQueue`; use these for
+  background scan orchestration and UI-thread publication.
 - `qtutils/`: reusable Qt helpers, settings, widgets, dialogs, and platform integration.
 - `cpp-template-utils/`: header-only generic/template utilities used by the other components.
 - `tests/`: separate qmake test project; `tests/spaceguard_testapp/` is the Catch2 application for non-UI SpaceGuard
@@ -71,6 +71,8 @@ filesystems remain deterministic without adding substitution machinery to the ap
   even when they retain the target's device ID. Mount identity is traversal-only and is not persisted across scans.
 - A failed or incomplete directory enumeration must never be treated as an empty, authoritative subtree.
 - Build a scan result completely off-thread and publish it to the UI only when complete and still current.
+- Use the scanner's explicit single-thread overload for deterministic semantic tests. Use its pool overload for
+  concurrency/equivalence tests and through `SnapshotScanRunner` in production.
 - Persist factual observations only; rebuild coverage, allocation totals, hard-link groups, and other derived state
   after scanning or loading.
 
