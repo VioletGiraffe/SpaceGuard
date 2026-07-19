@@ -579,7 +579,7 @@ void initializeDerivedData(SnapshotEntry& entry, const NativePath& path, HardLin
 	else if (entry.metadata)
 	{
 		const bool isRegularFile = entry.attributes.kind == thin_io::entry_kind::regular_file;
-		if (isRegularFile && entry.metadata->identity)
+		if (isRegularFile && entry.metadata->hardLinkCount > 1 && entry.metadata->identity)
 		{
 			hardLinkEntries[*entry.metadata->identity].push_back({&entry, path});
 		}

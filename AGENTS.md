@@ -75,6 +75,8 @@ filesystems remain deterministic without adding substitution machinery to the ap
   concurrency/equivalence tests and through `SnapshotScanRunner` in production.
 - Persist factual observations only; rebuild coverage, allocation totals, hard-link groups, and other derived state
   after scanning or loading.
+- Count ordinary one-link regular files directly. Build derived hard-link groups only for files reporting multiple links;
+  comparison must still correlate one-to-many and many-to-one alias transitions through a surviving common path.
 
 ## Related reference project
 

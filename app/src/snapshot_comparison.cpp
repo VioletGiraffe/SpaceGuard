@@ -11,6 +11,7 @@ namespace {
 
 struct ComparedEntryAccounting
 {
+	const SnapshotEntry* sourceEntry = nullptr;
 	std::optional<uint64_t> localAllocatedSize;
 	std::optional<uint64_t> subtreeAllocatedSize;
 	bool allocationOverflow = false;
@@ -21,7 +22,7 @@ using HardLinkGroupsByIdentity = std::map<thin_io::entry_identity, const Snapsho
 
 void collectAccountingByPath(const SnapshotEntry& entry, const NativePath& path, AccountingByPath& accountingByPath)
 {
-	accountingByPath.emplace(path, ComparedEntryAccounting{entry.derived.localAllocatedSize});
+	accountingByPath.emplace(path, ComparedEntryAccounting{&entry, entry.derived.localAllocatedSize});
 	for (const auto& [name, child] : entry.children)
 		collectAccountingByPath(child, appendNativeName(path, name), accountingByPath);
 }
@@ -53,28 +54,63 @@ HardLinkGroupsByIdentity indexExactHardLinkGroups(const Snapshot& snapshot)
 	return groups;
 }
 
+std::optional<NativePath> firstCommonSingleLinkAlias(
+	const SnapshotHardLinkGroup& group, const AccountingByPath& otherAccounting)
+{
+	for (const NativePath& alias : group.aliases)
+	{
+		const auto accounting = otherAccounting.find(alias);
+		if (accounting == otherAccounting.end())
+			continue;
+
+		const SnapshotEntry& entry = *accounting->second.sourceEntry;
+		if (entry.attributes.kind == thin_io::entry_kind::regular_file
+			&& entry.metadata && entry.metadata->hardLinkCount == 1
+			&& entry.metadata->identity && *entry.metadata->identity == group.identity
+			&& accounting->second.localAllocatedSize)
+		{
+			return alias;
+		}
+	}
+	return {};
+}
+
+void anchorHardLinkGroupAtAlias(
+	const SnapshotHardLinkGroup& group, const NativePath& alias, AccountingByPath& accounting)
+{
+	for (const NativePath& groupAlias : group.aliases)
+		accounting.at(groupAlias).localAllocatedSize = 0;
+	accounting.at(alias).localAllocatedSize = group.allocatedSize;
+}
+
 void correlateHardLinkGroups(const Snapshot& baseline, const Snapshot& current,
 	AccountingByPath& baselineAccounting, AccountingByPath& currentAccounting)
 {
+	const HardLinkGroupsByIdentity baselineGroups = indexExactHardLinkGroups(baseline);
 	const HardLinkGroupsByIdentity currentGroups = indexExactHardLinkGroups(current);
 	for (const SnapshotHardLinkGroup& baselineGroup : baseline.hardLinkGroups)
 	{
 		if (!baselineGroup.accountingExact)
 			continue;
 		const auto currentGroup = currentGroups.find(baselineGroup.identity);
-		if (currentGroup == currentGroups.end())
-			continue;
-
-		const std::optional<NativePath> commonAlias = firstCommonAlias(baselineGroup.aliases, currentGroup->second->aliases);
+		const std::optional<NativePath> commonAlias = currentGroup != currentGroups.end()
+			? firstCommonAlias(baselineGroup.aliases, currentGroup->second->aliases)
+			: firstCommonSingleLinkAlias(baselineGroup, currentAccounting);
 		if (!commonAlias)
 			continue;
 
-		for (const NativePath& alias : baselineGroup.aliases)
-			baselineAccounting.at(alias).localAllocatedSize = 0;
-		for (const NativePath& alias : currentGroup->second->aliases)
-			currentAccounting.at(alias).localAllocatedSize = 0;
-		baselineAccounting.at(*commonAlias).localAllocatedSize = baselineGroup.allocatedSize;
-		currentAccounting.at(*commonAlias).localAllocatedSize = currentGroup->second->allocatedSize;
+		anchorHardLinkGroupAtAlias(baselineGroup, *commonAlias, baselineAccounting);
+		if (currentGroup != currentGroups.end())
+			anchorHardLinkGroupAtAlias(*currentGroup->second, *commonAlias, currentAccounting);
+	}
+
+	for (const SnapshotHardLinkGroup& currentGroup : current.hardLinkGroups)
+	{
+		if (!currentGroup.accountingExact || baselineGroups.contains(currentGroup.identity))
+			continue;
+		const std::optional<NativePath> commonAlias = firstCommonSingleLinkAlias(currentGroup, baselineAccounting);
+		if (commonAlias)
+			anchorHardLinkGroupAtAlias(currentGroup, *commonAlias, currentAccounting);
 	}
 }
 

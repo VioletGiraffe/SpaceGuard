@@ -126,6 +126,17 @@ TEST_CASE("Derived accounting groups hard links deterministically", "[snapshot][
 	CHECK(snapshot.root.children.at(nativeName("b")).children.at(nativeName("a")).derived.localAllocatedSize == 0);
 }
 
+TEST_CASE("Derived accounting bypasses hard-link grouping for one-link files", "[snapshot][accounting]")
+{
+	Snapshot snapshot = makeSnapshot();
+	snapshot.root.children.emplace(nativeName("file"), regularFile(100, 1, entryIdentity(42, 9)));
+
+	snapshot.rebuildDerivedData();
+	CHECK(snapshot.hardLinkGroups.empty());
+	CHECK(snapshot.root.children.at(nativeName("file")).derived.localAllocatedSize == 100);
+	CHECK(snapshot.root.derived.subtreeAllocatedSize == 100);
+}
+
 TEST_CASE("Derived accounting identifies unavailable and inconsistent hard-link facts", "[snapshot][accounting]")
 {
 	SECTION("Multiple links without identity are uncertain")
