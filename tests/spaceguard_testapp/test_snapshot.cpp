@@ -74,7 +74,7 @@ Snapshot makeSnapshot(const bool reverseInsertionOrder = false)
 	snapshot.root = directoryEntry(DirectoryTraversalState::completed, metadata(0, 4096, 1, identity(filesystem, 1)));
 
 	SnapshotEntry completed = directoryEntry(DirectoryTraversalState::completed, metadata(0, 4096, 1, identity(filesystem, 2)));
-	completed.children.emplace(nativeName("other"), SnapshotEntry{{thin_io::entry_kind::other, false, false, false, 0}, metadata(7, 8, 1)});
+	completed.children.try_emplace(nativeName("other"), SnapshotEntry{{thin_io::entry_kind::other, false, false, false, 0}, metadata(7, 8, 1)});
 
 	SnapshotEntry failed = directoryEntry(DirectoryTraversalState::enumeration_failed, metadata(0, 4096, 1, identity(filesystem, 3)));
 	SnapshotEntry unknownMetadata = directoryEntry(DirectoryTraversalState::metadata_unavailable, {});
@@ -107,7 +107,7 @@ Snapshot makeSnapshot(const bool reverseInsertionOrder = false)
 	if (reverseInsertionOrder)
 		std::ranges::reverse(entries);
 	for (auto& [name, entry] : entries)
-		snapshot.root.children.emplace(std::move(name), std::move(entry));
+		snapshot.root.children.try_emplace(std::move(name), std::move(entry));
 
 	snapshot.filesystemSpaceAtStart = thin_io::filesystem_space{100000, 40000, 30000, filesystem};
 	snapshot.filesystemSpaceAtCompletion = thin_io::filesystem_space{100000, 35000, 25000, {}};
@@ -238,14 +238,17 @@ TEST_CASE("Large snapshots round-trip", "[snapshot][persistence]")
 	Snapshot original = makeSnapshot();
 	original.root.children.clear();
 	original.diagnostics.clear();
+	original.root.children.reserve(EntryCount);
+	original.root.children.begin_batch();
 	for (size_t i = 0; i < EntryCount; ++i)
 	{
 		SnapshotEntry entry;
 		entry.attributes = {thin_io::entry_kind::regular_file, false, true, true, 0};
 		entry.metadata = metadata(i + 1, (i + 1) * 4096, 1);
 		const std::string name = "file-" + std::to_string(i);
-		original.root.children.emplace(nativeName(name.c_str()), std::move(entry));
+		original.root.children.append_unsorted(nativeName(name.c_str()), std::move(entry));
 	}
+	original.root.children.end_batch();
 	for (size_t i = 0; i < DiagnosticCount; ++i)
 		original.diagnostics.push_back({original.rootPath, SnapshotOperation::entry_changed_during_scan, {}});
 

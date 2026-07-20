@@ -77,6 +77,8 @@ filesystems remain deterministic without adding substitution machinery to the ap
   after scanning or loading.
 - Count ordinary one-link regular files directly. Build derived hard-link groups only for files reporting multiple links;
   comparison must still correlate one-to-many and many-to-one alias transitions through a surviving common path.
+- Store each snapshot entry's children in the separate-key/value `flat_map`. Scanning reserves and finalizes the complete
+  unsorted sibling batch before publishing child pointers; loading reserves and strictly appends the persisted sorted names.
 
 ## Related reference project
 

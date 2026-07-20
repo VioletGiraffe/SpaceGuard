@@ -375,13 +375,14 @@ bool readEntry(QDataStream& stream, SnapshotEntry& entry, const uint32_t depth, 
 		return false;
 
 	entry.children.clear();
+	entry.children.reserve(childCount);
 	for (uint32_t i = 0; i < childCount; ++i)
 	{
 		NativeName name;
 		SnapshotEntry child;
 		if (!readNativeString(stream, name) || !isValidNativeName(name) || !readEntry(stream, child, depth + 1, totalEntryCount))
 			return false;
-		if (!entry.children.emplace(std::move(name), std::move(child)).second)
+		if (!entry.children.append_sorted_unique(std::move(name), std::move(child)))
 			return false;
 	}
 	return true;
@@ -589,7 +590,7 @@ void initializeDerivedData(SnapshotEntry& entry, const NativePath& path, HardLin
 		}
 	}
 
-	for (auto& [name, child] : entry.children)
+	for (auto [name, child] : entry.children)
 		initializeDerivedData(child, appendNativeName(path, name), hardLinkEntries);
 }
 
@@ -638,7 +639,7 @@ void aggregateDerivedData(SnapshotEntry& entry)
 	entry.derived.allocationOverflow = false;
 	std::optional<uint64_t> subtreeAllocatedSize = entry.derived.localAllocatedSize;
 
-	for (auto& namedChild : entry.children)
+	for (auto namedChild : entry.children)
 	{
 		SnapshotEntry& child = namedChild.second;
 		aggregateDerivedData(child);

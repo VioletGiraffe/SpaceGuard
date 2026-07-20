@@ -108,10 +108,10 @@ TEST_CASE("Derived accounting groups hard links deterministically", "[snapshot][
 	SnapshotEntry firstDirectory = directory();
 	SnapshotEntry secondDirectory = directory();
 	const thin_io::entry_identity identity = entryIdentity(42, 9);
-	firstDirectory.children.emplace(nativeName("z"), regularFile(100, 2, identity));
-	secondDirectory.children.emplace(nativeName("a"), regularFile(100, 2, identity));
-	snapshot.root.children.emplace(nativeName("a"), std::move(firstDirectory));
-	snapshot.root.children.emplace(nativeName("b"), std::move(secondDirectory));
+	firstDirectory.children.try_emplace(nativeName("z"), regularFile(100, 2, identity));
+	secondDirectory.children.try_emplace(nativeName("a"), regularFile(100, 2, identity));
+	snapshot.root.children.try_emplace(nativeName("a"), std::move(firstDirectory));
+	snapshot.root.children.try_emplace(nativeName("b"), std::move(secondDirectory));
 
 	snapshot.rebuildDerivedData();
 	REQUIRE(snapshot.derivedDataAvailable);
@@ -129,7 +129,7 @@ TEST_CASE("Derived accounting groups hard links deterministically", "[snapshot][
 TEST_CASE("Derived accounting bypasses hard-link grouping for one-link files", "[snapshot][accounting]")
 {
 	Snapshot snapshot = makeSnapshot();
-	snapshot.root.children.emplace(nativeName("file"), regularFile(100, 1, entryIdentity(42, 9)));
+	snapshot.root.children.try_emplace(nativeName("file"), regularFile(100, 1, entryIdentity(42, 9)));
 
 	snapshot.rebuildDerivedData();
 	CHECK(snapshot.hardLinkGroups.empty());
@@ -142,7 +142,7 @@ TEST_CASE("Derived accounting identifies unavailable and inconsistent hard-link 
 	SECTION("Multiple links without identity are uncertain")
 	{
 		Snapshot snapshot = makeSnapshot();
-		snapshot.root.children.emplace(nativeName("file"), regularFile(100, 2));
+		snapshot.root.children.try_emplace(nativeName("file"), regularFile(100, 2));
 		snapshot.rebuildDerivedData();
 		CHECK_FALSE(snapshot.root.children.at(nativeName("file")).derived.localAllocatedSize);
 		CHECK_FALSE(snapshot.root.derived.subtreeAllocatedSize);
@@ -151,7 +151,7 @@ TEST_CASE("Derived accounting identifies unavailable and inconsistent hard-link 
 	SECTION("Unobserved aliases are uncertain")
 	{
 		Snapshot snapshot = makeSnapshot();
-		snapshot.root.children.emplace(nativeName("file"), regularFile(100, 2, entryIdentity(42, 7)));
+		snapshot.root.children.try_emplace(nativeName("file"), regularFile(100, 2, entryIdentity(42, 7)));
 		snapshot.rebuildDerivedData();
 		REQUIRE(snapshot.hardLinkGroups.size() == 1);
 		CHECK(snapshot.hardLinkGroups.front().metadataConsistent);
@@ -164,8 +164,8 @@ TEST_CASE("Derived accounting identifies unavailable and inconsistent hard-link 
 	{
 		Snapshot snapshot = makeSnapshot();
 		const thin_io::entry_identity identity = entryIdentity(42, 8);
-		snapshot.root.children.emplace(nativeName("a"), regularFile(100, 2, identity));
-		snapshot.root.children.emplace(nativeName("b"), regularFile(200, 2, identity));
+		snapshot.root.children.try_emplace(nativeName("a"), regularFile(100, 2, identity));
+		snapshot.root.children.try_emplace(nativeName("b"), regularFile(200, 2, identity));
 		snapshot.rebuildDerivedData();
 		REQUIRE(snapshot.hardLinkGroups.size() == 1);
 		CHECK_FALSE(snapshot.hardLinkGroups.front().metadataConsistent);
@@ -179,8 +179,8 @@ TEST_CASE("Derived accounting identifies unavailable and inconsistent hard-link 
 TEST_CASE("Derived accounting rejects allocated-size overflow", "[snapshot][accounting]")
 {
 	Snapshot snapshot = makeSnapshot();
-	snapshot.root.children.emplace(nativeName("a"), regularFile(std::numeric_limits<uint64_t>::max()));
-	snapshot.root.children.emplace(nativeName("b"), regularFile(1));
+	snapshot.root.children.try_emplace(nativeName("a"), regularFile(std::numeric_limits<uint64_t>::max()));
+	snapshot.root.children.try_emplace(nativeName("b"), regularFile(1));
 	snapshot.rebuildDerivedData();
 	CHECK(snapshot.root.derived.allocationOverflow);
 	CHECK_FALSE(snapshot.root.derived.subtreeAllocatedSize);
@@ -194,8 +194,8 @@ TEST_CASE("Derived accounting excludes mount boundaries but includes link entrie
 	SnapshotEntry link = directory(DirectoryTraversalState::link_boundary);
 	link.attributes.is_link = true;
 	link.metadata = entryMetadata(20);
-	snapshot.root.children.emplace(nativeName("link"), std::move(link));
-	snapshot.root.children.emplace(nativeName("mount"), std::move(mount));
+	snapshot.root.children.try_emplace(nativeName("link"), std::move(link));
+	snapshot.root.children.try_emplace(nativeName("mount"), std::move(mount));
 
 	snapshot.rebuildDerivedData();
 	CHECK(snapshot.root.children.at(nativeName("mount")).derived.localAllocatedSize == 0);
@@ -207,15 +207,15 @@ TEST_CASE("Derived accounting excludes mount boundaries but includes link entrie
 TEST_CASE("Comparison reports lowest significant positive changes", "[snapshot][comparison]")
 {
 	Snapshot baseline = makeSnapshot();
-	baseline.root.children.emplace(nativeName("existing"), regularFile(100));
-	baseline.root.children.emplace(nativeName("deleted"), regularFile(50));
+	baseline.root.children.try_emplace(nativeName("existing"), regularFile(100));
+	baseline.root.children.try_emplace(nativeName("deleted"), regularFile(50));
 
 	Snapshot current = makeSnapshot();
-	current.root.children.emplace(nativeName("existing"), regularFile(150));
+	current.root.children.try_emplace(nativeName("existing"), regularFile(150));
 	SnapshotEntry addedDirectory = directory();
-	addedDirectory.children.emplace(nativeName("large"), regularFile(70));
-	addedDirectory.children.emplace(nativeName("small"), regularFile(40));
-	current.root.children.emplace(nativeName("added"), std::move(addedDirectory));
+	addedDirectory.children.try_emplace(nativeName("large"), regularFile(70));
+	addedDirectory.children.try_emplace(nativeName("small"), regularFile(40));
+	current.root.children.try_emplace(nativeName("added"), std::move(addedDirectory));
 
 	const auto result = comparePrepared(baseline, current, 50);
 	REQUIRE(result);
@@ -238,9 +238,9 @@ TEST_CASE("Comparison reports an aggregate when significant descendants are abse
 	Snapshot baseline = makeSnapshot();
 	Snapshot current = makeSnapshot();
 	SnapshotEntry addedDirectory = directory();
-	addedDirectory.children.emplace(nativeName("a"), regularFile(30));
-	addedDirectory.children.emplace(nativeName("b"), regularFile(30));
-	current.root.children.emplace(nativeName("added"), std::move(addedDirectory));
+	addedDirectory.children.try_emplace(nativeName("a"), regularFile(30));
+	addedDirectory.children.try_emplace(nativeName("b"), regularFile(30));
+	current.root.children.try_emplace(nativeName("added"), std::move(addedDirectory));
 
 	const auto result = comparePrepared(baseline, current, 50);
 	REQUIRE(result);
@@ -251,12 +251,12 @@ TEST_CASE("Comparison reports an aggregate when significant descendants are abse
 TEST_CASE("Incomplete regions do not hide comparable siblings", "[snapshot][comparison]")
 {
 	Snapshot baseline = makeSnapshot();
-	baseline.root.children.emplace(nativeName("bad"), directory());
-	baseline.root.children.emplace(nativeName("good"), regularFile(100));
+	baseline.root.children.try_emplace(nativeName("bad"), directory());
+	baseline.root.children.try_emplace(nativeName("good"), regularFile(100));
 
 	Snapshot current = makeSnapshot();
-	current.root.children.emplace(nativeName("bad"), directory(DirectoryTraversalState::enumeration_failed));
-	current.root.children.emplace(nativeName("good"), regularFile(200));
+	current.root.children.try_emplace(nativeName("bad"), directory(DirectoryTraversalState::enumeration_failed));
+	current.root.children.try_emplace(nativeName("good"), regularFile(200));
 
 	const auto result = comparePrepared(baseline, current, 50);
 	REQUIRE(result);
@@ -277,10 +277,10 @@ TEST_CASE("Comparison results own source-derived paths", "[snapshot][comparison]
 	NativePath excludedPath;
 	{
 		Snapshot baseline = makeSnapshot();
-		baseline.root.children.emplace(nativeName("excluded"), directory());
+		baseline.root.children.try_emplace(nativeName("excluded"), directory());
 		Snapshot current = makeSnapshot();
-		current.root.children.emplace(nativeName("changed"), regularFile(100));
-		current.root.children.emplace(nativeName("excluded"), directory(DirectoryTraversalState::enumeration_failed));
+		current.root.children.try_emplace(nativeName("changed"), regularFile(100));
+		current.root.children.try_emplace(nativeName("excluded"), directory(DirectoryTraversalState::enumeration_failed));
 		changedPath = childPath(current.rootPath, "changed");
 		excludedPath = childPath(current.rootPath, "excluded");
 
@@ -298,8 +298,8 @@ TEST_CASE("Comparison results own source-derived paths", "[snapshot][comparison]
 TEST_CASE("Metadata uncertainty excludes only the affected entry", "[snapshot][comparison]")
 {
 	Snapshot baseline = makeSnapshot();
-	baseline.root.children.emplace(nativeName("unknown"), regularFile(100));
-	baseline.root.children.emplace(nativeName("good"), regularFile(10));
+	baseline.root.children.try_emplace(nativeName("unknown"), regularFile(100));
+	baseline.root.children.try_emplace(nativeName("good"), regularFile(10));
 	Snapshot current = baseline;
 	current.root.children.at(nativeName("unknown")).metadata.reset();
 	current.root.children.at(nativeName("good")).metadata->allocatedSize = 30;
@@ -318,11 +318,11 @@ TEST_CASE("Common hard-link aliases anchor groups across snapshots", "[snapshot]
 {
 	const thin_io::entry_identity identity = entryIdentity(42, 4);
 	Snapshot baseline = makeSnapshot();
-	baseline.root.children.emplace(nativeName("b"), regularFile(100, 1, identity));
+	baseline.root.children.try_emplace(nativeName("b"), regularFile(100, 1, identity));
 
 	Snapshot current = makeSnapshot();
-	current.root.children.emplace(nativeName("a"), regularFile(100, 2, identity));
-	current.root.children.emplace(nativeName("b"), regularFile(100, 2, identity));
+	current.root.children.try_emplace(nativeName("a"), regularFile(100, 2, identity));
+	current.root.children.try_emplace(nativeName("b"), regularFile(100, 2, identity));
 
 	const auto aliasAdded = comparePrepared(baseline, current, 1);
 	REQUIRE(aliasAdded);
@@ -339,10 +339,10 @@ TEST_CASE("Common hard-link aliases anchor groups across snapshots", "[snapshot]
 	CHECK(allocationGrew->changes.front() == (ComparisonChange{childPath(current.rootPath, "b"), 50}));
 
 	Snapshot twoAliases = makeSnapshot();
-	twoAliases.root.children.emplace(nativeName("a"), regularFile(100, 2, identity));
-	twoAliases.root.children.emplace(nativeName("b"), regularFile(100, 2, identity));
+	twoAliases.root.children.try_emplace(nativeName("a"), regularFile(100, 2, identity));
+	twoAliases.root.children.try_emplace(nativeName("b"), regularFile(100, 2, identity));
 	Snapshot aliasRemoved = makeSnapshot();
-	aliasRemoved.root.children.emplace(nativeName("b"), regularFile(100, 1, identity));
+	aliasRemoved.root.children.try_emplace(nativeName("b"), regularFile(100, 1, identity));
 	const auto removal = comparePrepared(twoAliases, aliasRemoved, 1);
 	REQUIRE(removal);
 	CHECK(removal->changes.empty());
@@ -353,9 +353,9 @@ TEST_CASE("Equal identities at disjoint paths are not treated as moves", "[snaps
 {
 	const thin_io::entry_identity identity = entryIdentity(42, 5);
 	Snapshot baseline = makeSnapshot();
-	baseline.root.children.emplace(nativeName("old"), regularFile(100, 1, identity));
+	baseline.root.children.try_emplace(nativeName("old"), regularFile(100, 1, identity));
 	Snapshot current = makeSnapshot();
-	current.root.children.emplace(nativeName("new"), regularFile(100, 1, identity));
+	current.root.children.try_emplace(nativeName("new"), regularFile(100, 1, identity));
 
 	const auto result = comparePrepared(baseline, current, 1);
 	REQUIRE(result);
@@ -433,9 +433,9 @@ TEST_CASE("Root eligibility uses paths and available identities", "[snapshot][co
 TEST_CASE("Comparison reconciles free space with exact net allocation", "[snapshot][comparison][space]")
 {
 	Snapshot baseline = makeSnapshot();
-	baseline.root.children.emplace(nativeName("file"), regularFile(100));
+	baseline.root.children.try_emplace(nativeName("file"), regularFile(100));
 	Snapshot current = makeSnapshot();
-	current.root.children.emplace(nativeName("file"), regularFile(122));
+	current.root.children.try_emplace(nativeName("file"), regularFile(122));
 	current.filesystemSpaceAtStart->capacity = 1100;
 	current.filesystemSpaceAtStart->free = 475;
 	current.filesystemSpaceAtStart->available = 385;
@@ -484,7 +484,7 @@ TEST_CASE("Reconciliation detects magnitude overflow", "[snapshot][comparison][s
 {
 	constexpr uint64_t Maximum = std::numeric_limits<uint64_t>::max();
 	Snapshot baseline = makeSnapshot();
-	baseline.root.children.emplace(nativeName("file"), regularFile(Maximum));
+	baseline.root.children.try_emplace(nativeName("file"), regularFile(Maximum));
 	baseline.filesystemSpaceAtCompletion->capacity = Maximum;
 	baseline.filesystemSpaceAtCompletion->free = Maximum;
 	baseline.filesystemSpaceAtCompletion->available = 0;

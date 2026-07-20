@@ -214,19 +214,21 @@ private:
 			return {};
 		}
 
+		work.entry->children.reserve(entries->size());
+		work.entry->children.begin_batch();
 		for (const thin_io::directory_entry& listedEntry : *entries)
 		{
 			if (m_canceled.load(std::memory_order_relaxed))
 				return {};
 			SnapshotEntry child;
 			child.attributes = listedEntry.attributes;
-			const bool inserted = work.entry->children.emplace(nativeNameFromThinIo(listedEntry.name), std::move(child)).second;
-			assert(inserted);
-			(void)inserted;
+			work.entry->children.append_unsorted(nativeNameFromThinIo(listedEntry.name), std::move(child));
 		}
+		work.entry->children.end_batch();
+		assert(work.entry->children.size() == entries->size());
 		discoverEntries(static_cast<uint64_t>(entries->size()));
 
-		for (auto& [name, child] : work.entry->children)
+		for (auto [name, child] : work.entry->children)
 		{
 			if (m_canceled.load(std::memory_order_relaxed))
 				return {};

@@ -2,6 +2,7 @@
 
 #include "native_path.h"
 
+#include "container/flat_map.hpp"
 #include "filesystem_error.hpp"
 #include "filesystem_types.hpp"
 
@@ -9,7 +10,6 @@
 #include <QString>
 
 #include <expected>
-#include <map>
 #include <optional>
 #include <stdint.h>
 #include <vector>
@@ -63,7 +63,7 @@ struct SnapshotEntry
 	thin_io::entry_attributes attributes;
 	std::optional<SnapshotEntryMetadata> metadata;
 	DirectoryTraversalState traversalState = DirectoryTraversalState::not_directory;
-	std::map<NativeName, SnapshotEntry> children;
+	flat_map<NativeName, SnapshotEntry> children;
 	SnapshotEntryDerivedData derived;
 
 	[[nodiscard]] bool operator==(const SnapshotEntry& other) const
