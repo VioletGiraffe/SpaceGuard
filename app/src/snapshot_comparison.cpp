@@ -4,7 +4,6 @@
 #include <assert.h>
 #include <limits>
 #include <map>
-#include <set>
 #include <utility>
 
 namespace {
@@ -282,14 +281,6 @@ ComparisonExcludedRegion excludedRegion(const NativePath& path, const Comparison
 	return region;
 }
 
-const SnapshotEntry* findChild(const SnapshotEntry* entry, const NativeName& name)
-{
-	if (!entry)
-		return nullptr;
-	const auto child = entry->children.find(name);
-	return child != entry->children.end() ? &child->second : nullptr;
-}
-
 void compareEntries(const ComparisonSide& baseline, const ComparisonSide& current, const NativePath& path,
 	const uint64_t threshold, SnapshotComparisonResult& result)
 {
@@ -307,31 +298,46 @@ void compareEntries(const ComparisonSide& baseline, const ComparisonSide& curren
 	if ((!baselineSubtreeSize || !currentSubtreeSize) && localOrChildSetIsUnknown)
 		result.excludedRegions.push_back(excludedRegion(path, baseline, current));
 
-	std::set<NativeName> childNames;
-	if (baseline.entry)
-	{
-		for (const auto& namedChild : baseline.entry->children)
-			childNames.insert(namedChild.first);
-	}
-	if (current.entry)
-	{
-		for (const auto& namedChild : current.entry->children)
-			childNames.insert(namedChild.first);
-	}
-
 	const size_t changesBeforeChildren = result.changes.size();
-	for (const NativeName& name : childNames)
+	auto compareChild = [&](const NativeName& name, const SnapshotEntry* baselineChild, const SnapshotEntry* currentChild)
 	{
-		const SnapshotEntry* baselineChild = findChild(baseline.entry, name);
-		const SnapshotEntry* currentChild = findChild(current.entry, name);
 		if ((!baselineChild && !baselineChildrenAuthoritative) || (!currentChild && !currentChildrenAuthoritative))
-			continue;
+			return;
 
 		const NativePath childPath = appendNativeName(path, name);
 		compareEntries(
 			{baselineChild, !baselineChild && baselineChildrenAuthoritative, baseline.accountingByPath},
 			{currentChild, !currentChild && currentChildrenAuthoritative, current.accountingByPath},
 			childPath, threshold, result);
+	};
+
+	using Children = decltype(SnapshotEntry::children);
+	static const Children noChildren;
+	const Children& baselineChildren = baseline.entry ? baseline.entry->children : noChildren;
+	const Children& currentChildren = current.entry ? current.entry->children : noChildren;
+	auto baselineChild = baselineChildren.begin();
+	const auto baselineChildrenEnd = baselineChildren.end();
+	auto currentChild = currentChildren.begin();
+	const auto currentChildrenEnd = currentChildren.end();
+	while (baselineChild != baselineChildrenEnd || currentChild != currentChildrenEnd)
+	{
+		if (currentChild == currentChildrenEnd
+			|| (baselineChild != baselineChildrenEnd && baselineChildren.key_comp()(baselineChild.key(), currentChild.key())))
+		{
+			compareChild(baselineChild.key(), &baselineChild.value(), nullptr);
+			++baselineChild;
+		}
+		else if (baselineChild == baselineChildrenEnd || currentChildren.key_comp()(currentChild.key(), baselineChild.key()))
+		{
+			compareChild(currentChild.key(), nullptr, &currentChild.value());
+			++currentChild;
+		}
+		else
+		{
+			compareChild(baselineChild.key(), &baselineChild.value(), &currentChild.value());
+			++baselineChild;
+			++currentChild;
+		}
 	}
 
 	if (!baselineSubtreeSize || !currentSubtreeSize || *currentSubtreeSize <= *baselineSubtreeSize)
