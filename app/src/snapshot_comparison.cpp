@@ -344,7 +344,17 @@ void compareEntries(const ComparisonSide& baseline, const ComparisonSide& curren
 		return;
 	const uint64_t allocatedIncrease = *currentSubtreeSize - *baselineSubtreeSize;
 	if (allocatedIncrease >= threshold && result.changes.size() == changesBeforeChildren)
-		result.changes.push_back({path, allocatedIncrease});
+	{
+		assert(current.entry);
+		ComparisonChange change;
+		change.path = path;
+		change.baselineSubtreeAllocatedSize = *baselineSubtreeSize;
+		change.currentSubtreeAllocatedSize = *currentSubtreeSize;
+		change.allocatedIncrease = allocatedIncrease;
+		change.currentEntryKind = current.entry->attributes.kind;
+		change.baselineEntryExists = baseline.entry != nullptr;
+		result.changes.push_back(std::move(change));
+	}
 }
 
 } // namespace

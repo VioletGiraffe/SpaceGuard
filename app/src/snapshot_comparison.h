@@ -57,7 +57,11 @@ struct ComparisonSummary
 struct ComparisonChange
 {
 	NativePath path;
+	uint64_t baselineSubtreeAllocatedSize = 0;
+	uint64_t currentSubtreeAllocatedSize = 0;
 	uint64_t allocatedIncrease = 0;
+	thin_io::entry_kind currentEntryKind = thin_io::entry_kind::unknown;
+	bool baselineEntryExists = false;
 
 	[[nodiscard]] bool operator==(const ComparisonChange&) const = default;
 };

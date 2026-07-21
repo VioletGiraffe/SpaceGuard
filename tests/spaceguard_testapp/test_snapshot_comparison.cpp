@@ -85,6 +85,19 @@ const ComparisonChange* findChange(const SnapshotComparisonResult& result, const
 	return change != result.changes.end() ? &*change : nullptr;
 }
 
+ComparisonChange expectedChange(const NativePath& path, const uint64_t baselineSubtreeAllocatedSize, const uint64_t currentSubtreeAllocatedSize,
+	const thin_io::entry_kind currentEntryKind, const bool baselineEntryExists)
+{
+	ComparisonChange change;
+	change.path = path;
+	change.baselineSubtreeAllocatedSize = baselineSubtreeAllocatedSize;
+	change.currentSubtreeAllocatedSize = currentSubtreeAllocatedSize;
+	change.allocatedIncrease = currentSubtreeAllocatedSize - baselineSubtreeAllocatedSize;
+	change.currentEntryKind = currentEntryKind;
+	change.baselineEntryExists = baselineEntryExists;
+	return change;
+}
+
 const ComparisonExcludedRegion* findExcludedRegion(const SnapshotComparisonResult& result, const NativePath& path)
 {
 	const auto region = std::ranges::find_if(
@@ -224,8 +237,9 @@ TEST_CASE("Comparison reports lowest significant positive changes", "[snapshot][
 	const ComparisonChange* added = findChange(*result, childPath(childPath(baseline.rootPath, "added"), "large"));
 	REQUIRE(existing);
 	REQUIRE(added);
-	CHECK(existing->allocatedIncrease == 50);
-	CHECK(added->allocatedIncrease == 70);
+	CHECK(*existing == expectedChange(childPath(baseline.rootPath, "existing"), 100, 150, thin_io::entry_kind::regular_file, true));
+	CHECK(*added == expectedChange(
+		childPath(childPath(baseline.rootPath, "added"), "large"), 0, 70, thin_io::entry_kind::regular_file, false));
 	CHECK(result->summary.allocatedTreeChange == (MagnitudeChange{ChangeDirection::increase, 110}));
 
 	const auto aboveThreshold = compareSnapshots(baseline, current, 111);
@@ -235,17 +249,63 @@ TEST_CASE("Comparison reports lowest significant positive changes", "[snapshot][
 
 TEST_CASE("Comparison reports an aggregate when significant descendants are absent", "[snapshot][comparison]")
 {
-	Snapshot baseline = makeSnapshot();
-	Snapshot current = makeSnapshot();
-	SnapshotEntry addedDirectory = directory();
-	addedDirectory.children.try_emplace(nativeName("a"), regularFile(30));
-	addedDirectory.children.try_emplace(nativeName("b"), regularFile(30));
-	current.root.children.try_emplace(nativeName("added"), std::move(addedDirectory));
+	SECTION("New directory")
+	{
+		Snapshot baseline = makeSnapshot();
+		Snapshot current = makeSnapshot();
+		SnapshotEntry addedDirectory = directory();
+		addedDirectory.children.try_emplace(nativeName("a"), regularFile(30));
+		addedDirectory.children.try_emplace(nativeName("b"), regularFile(30));
+		current.root.children.try_emplace(nativeName("added"), std::move(addedDirectory));
 
-	const auto result = comparePrepared(baseline, current, 50);
+		const auto result = comparePrepared(baseline, current, 50);
+		REQUIRE(result);
+		REQUIRE(result->changes.size() == 1);
+		CHECK(result->changes.front() == expectedChange(
+			childPath(current.rootPath, "added"), 0, 60, thin_io::entry_kind::directory, false));
+	}
+
+	SECTION("Existing directory")
+	{
+		Snapshot baseline = makeSnapshot();
+		SnapshotEntry baselineDirectory = directory();
+		baselineDirectory.children.try_emplace(nativeName("a"), regularFile(10));
+		baselineDirectory.children.try_emplace(nativeName("b"), regularFile(10));
+		baseline.root.children.try_emplace(nativeName("existing"), std::move(baselineDirectory));
+
+		Snapshot current = makeSnapshot();
+		SnapshotEntry currentDirectory = directory();
+		currentDirectory.children.try_emplace(nativeName("a"), regularFile(30));
+		currentDirectory.children.try_emplace(nativeName("b"), regularFile(30));
+		current.root.children.try_emplace(nativeName("existing"), std::move(currentDirectory));
+
+		const auto result = comparePrepared(baseline, current, 30);
+		REQUIRE(result);
+		REQUIRE(result->changes.size() == 1);
+		CHECK(result->changes.front() == expectedChange(
+			childPath(current.rootPath, "existing"), 20, 60, thin_io::entry_kind::directory, true));
+	}
+}
+
+TEST_CASE("Comparison keeps positive growth visible when larger deletions increase free space", "[snapshot][comparison][space]")
+{
+	Snapshot baseline = makeSnapshot();
+	baseline.root.children.try_emplace(nativeName("deleted"), regularFile(100));
+
+	Snapshot current = makeSnapshot();
+	current.root.children.try_emplace(nativeName("accumulated"), regularFile(40));
+	current.filesystemSpaceAtStart = thin_io::filesystem_space{1000, 570, 470, 42};
+	current.filesystemSpaceAtCompletion = thin_io::filesystem_space{1000, 560, 460, 42};
+
+	const auto result = comparePrepared(baseline, current, 1);
 	REQUIRE(result);
 	REQUIRE(result->changes.size() == 1);
-	CHECK(result->changes.front() == (ComparisonChange{childPath(current.rootPath, "added"), 60}));
+	CHECK(result->changes.front() == expectedChange(
+		childPath(current.rootPath, "accumulated"), 0, 40, thin_io::entry_kind::regular_file, false));
+	CHECK(result->summary.freeSpaceChange == (MagnitudeChange{ChangeDirection::increase, 60}));
+	CHECK(result->summary.allocatedTreeChange == (MagnitudeChange{ChangeDirection::decrease, 60}));
+	CHECK(result->summary.unexplainedConsumptionChange == (MagnitudeChange{}));
+	CHECK(result->summary.reconciliation == ReconciliationState::exact);
 }
 
 TEST_CASE("Incomplete regions do not hide comparable siblings", "[snapshot][comparison]")
@@ -261,7 +321,7 @@ TEST_CASE("Incomplete regions do not hide comparable siblings", "[snapshot][comp
 	const auto result = comparePrepared(baseline, current, 50);
 	REQUIRE(result);
 	REQUIRE(result->changes.size() == 1);
-	CHECK(result->changes.front() == (ComparisonChange{childPath(current.rootPath, "good"), 100}));
+	CHECK(result->changes.front() == expectedChange(childPath(current.rootPath, "good"), 100, 200, thin_io::entry_kind::regular_file, true));
 	const ComparisonExcludedRegion* bad = findExcludedRegion(*result, childPath(current.rootPath, "bad"));
 	REQUIRE(bad);
 	CHECK_FALSE(bad->baselineCoverageIncomplete);
@@ -290,7 +350,7 @@ TEST_CASE("Comparison results own source-derived paths", "[snapshot][comparison]
 	}
 
 	REQUIRE(comparison.changes.size() == 1);
-	CHECK(comparison.changes.front().path == changedPath);
+	CHECK(comparison.changes.front() == expectedChange(changedPath, 0, 100, thin_io::entry_kind::regular_file, false));
 	REQUIRE(comparison.excludedRegions.size() == 1);
 	CHECK(comparison.excludedRegions.front().path == excludedPath);
 }
@@ -336,7 +396,7 @@ TEST_CASE("Common hard-link aliases anchor groups across snapshots", "[snapshot]
 	const auto allocationGrew = comparePrepared(baseline, current, 1);
 	REQUIRE(allocationGrew);
 	REQUIRE(allocationGrew->changes.size() == 1);
-	CHECK(allocationGrew->changes.front() == (ComparisonChange{childPath(current.rootPath, "b"), 50}));
+	CHECK(allocationGrew->changes.front() == expectedChange(childPath(current.rootPath, "b"), 100, 150, thin_io::entry_kind::regular_file, true));
 
 	Snapshot twoAliases = makeSnapshot();
 	twoAliases.root.children.try_emplace(nativeName("a"), regularFile(100, 2, identity));
@@ -360,7 +420,7 @@ TEST_CASE("Equal identities at disjoint paths are not treated as moves", "[snaps
 	const auto result = comparePrepared(baseline, current, 1);
 	REQUIRE(result);
 	REQUIRE(result->changes.size() == 1);
-	CHECK(result->changes.front() == (ComparisonChange{childPath(current.rootPath, "new"), 100}));
+	CHECK(result->changes.front() == expectedChange(childPath(current.rootPath, "new"), 0, 100, thin_io::entry_kind::regular_file, false));
 	CHECK(result->summary.allocatedTreeChange == (MagnitudeChange{}));
 }
 
