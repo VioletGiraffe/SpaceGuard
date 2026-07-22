@@ -50,7 +50,10 @@ private:
 	void populateDiagnostics();
 	void populateCompletedScanDiagnostics(const Snapshot& snapshot);
 	void updateDetailsDisclosure();
-	void openTableItem(const QTableWidgetItem* item);
+	void updateGrowthActions();
+	void showSelectedGrowthInCurrentUsage();
+	void revealSelectedGrowthInFileManager();
+	void revealTableItemInFileManager(const QTableWidgetItem* item);
 	void revealPath(const NativePath& path);
 
 	std::unique_ptr<Ui::MainWindow> m_ui;

@@ -83,6 +83,7 @@ struct SnapshotComparisonResult
 	ComparisonSummary summary;
 	std::vector<ComparisonChange> changes;
 	std::vector<ComparisonExcludedRegion> excludedRegions;
+	bool hasPositiveChangeBelowThreshold = false;
 };
 
 [[nodiscard]] std::expected<SnapshotComparisonResult, SnapshotComparisonError> compareSnapshots(

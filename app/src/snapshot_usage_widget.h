@@ -23,6 +23,7 @@ public:
 
 	void setSnapshot(std::shared_ptr<const Snapshot> snapshot);
 	void clearSnapshot();
+	[[nodiscard]] bool selectPath(const NativePath& path);
 
 signals:
 	void pathActivated(const NativePath& path);
@@ -35,8 +36,11 @@ private:
 	};
 
 	void populateChildren(QTreeWidgetItem* item);
+	void selectNextSearchResult();
+	[[nodiscard]] std::optional<NativePath> findNextMatchingPath(const QString& query) const;
 
 	std::unique_ptr<Ui::SnapshotUsageWidget> m_ui;
 	std::shared_ptr<const Snapshot> m_snapshot;
 	std::map<NativePath, HardLinkPresentation> m_hardLinkPresentationByAlias;
+	std::optional<NativePath> m_lastSearchPath;
 };

@@ -17,15 +17,18 @@ The product-specific code is currently small and lives in `app/src/`:
 - `mainwindow.{h,cpp,ui}` owns the create-baseline/find-growth/inspect-usage/cancel workflow, UI-thread publication
   draining, snapshot file dialogs, threshold-only recalculation, and the two top-level result views.
 - `snapshot_usage_widget.{h,cpp,ui}` owns lazy presentation of a completed snapshot's current allocated-space tree,
-  including exact/unknown totals, percentages, boundary states, and hard-link accounting explanations.
+  including exact/unknown totals, percentages, boundary states, hard-link accounting explanations, authoritative
+  snapshot-path search, and lazy expansion to a selected native path. It initially expands the root and materializes
+  that one level; deeper directories remain lazy.
 - Snapshot files use the `.spaceguard` extension and a versioned, platform-marked `QDataStream`/`qCompress` format
   written through `QSaveFile`. Legacy prototype snapshots are rejected.
 
 The prototype replacement is complete in source: the final snapshot model, persistence, deterministic
 accounting/comparison, native multithreaded scan, asynchronous runner, UI workflow, hardening, and cross-platform
-readiness pass are integrated. The growth-first comparison UI and current-space usage view are integrated; cross-view
-navigation, authoritative path search, and final UI polish remain. Performance and memory consumption should be kept in
-mind but are not primary design concerns at the current estimates.
+readiness pass are integrated. The growth-first comparison UI, current-space usage view, cross-view navigation,
+authoritative path search, and source-level UI polish are integrated. Remaining work is runtime UI inspection and
+optional performance tuning. Performance and memory consumption should be kept in mind but are not primary design
+concerns at the current estimates.
 
 Windows is the primary platform. macOS and Linux support are desired.
 
@@ -68,6 +71,8 @@ filesystems remain deterministic without adding substitution machinery to the ap
   forwarding overload. Existing APIs must follow the same convention. On POSIX, `const char*` is the native byte path.
 - SpaceGuard should pass `QString` UTF-16 storage to native-wide Windows overloads through a small adapter outside
   `thin_io`, avoiding a UTF-8 round trip.
+- Resolve a factual descendant into path components with `nativeDescendantComponents()`; it validates separator
+  boundaries and preserves native component spelling/bytes without a display-string round trip.
 - Do not traverse symbolic links, junctions, mount points, or other directory reparse targets while accounting for a
   selected filesystem. Report the entry, but keep traversal within the chosen tree/volume.
 - Linux traversal compares the scan-local `statx` mount ID as well as filesystem identity so bind mounts are boundaries

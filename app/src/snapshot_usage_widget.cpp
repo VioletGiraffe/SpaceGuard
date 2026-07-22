@@ -4,6 +4,8 @@
 #include "ui_snapshot_usage_widget.h"
 
 #include <QHeaderView>
+#include <QLineEdit>
+#include <QPushButton>
 #include <QStringList>
 #include <QTreeWidget>
 
@@ -99,6 +101,13 @@ void setItemToolTip(QTreeWidgetItem& item, const QString& toolTip)
 		item.setToolTip(column, toolTip);
 }
 
+SnapshotUsageTreeItem* usageTreeItem(QTreeWidgetItem* item)
+{
+	auto* usageItem = dynamic_cast<SnapshotUsageTreeItem*>(item);
+	assert(usageItem);
+	return usageItem;
+}
+
 } // namespace
 
 SnapshotUsageWidget::SnapshotUsageWidget(QWidget* parent)
@@ -114,10 +123,23 @@ SnapshotUsageWidget::SnapshotUsageWidget(QWidget* parent)
 
 	connect(m_ui->usageTree, &QTreeWidget::itemExpanded, this, [this](QTreeWidgetItem* item) { populateChildren(item); });
 	connect(m_ui->usageTree, &QTreeWidget::itemActivated, this, [this](QTreeWidgetItem* item, int) {
-		auto* usageItem = dynamic_cast<SnapshotUsageTreeItem*>(item);
-		assert(usageItem);
-		emit pathActivated(usageItem->path);
+		emit pathActivated(usageTreeItem(item)->path);
 	});
+	connect(m_ui->usageTree, &QTreeWidget::itemSelectionChanged, this, [this] {
+		m_ui->revealSelectedButton->setEnabled(!m_ui->usageTree->selectedItems().isEmpty());
+	});
+	connect(m_ui->revealSelectedButton, &QAbstractButton::clicked, this, [this] {
+		if (QTreeWidgetItem* item = m_ui->usageTree->currentItem())
+			emit pathActivated(usageTreeItem(item)->path);
+	});
+	connect(m_ui->searchEdit, &QLineEdit::textChanged, this, [this](const QString& query) {
+		m_lastSearchPath.reset();
+		m_ui->searchStatusLabel->clear();
+		m_ui->searchStatusLabel->setToolTip(QString{});
+		m_ui->findNextButton->setEnabled(m_snapshot && !query.isEmpty());
+	});
+	connect(m_ui->searchEdit, &QLineEdit::returnPressed, this, [this] { selectNextSearchResult(); });
+	connect(m_ui->findNextButton, &QAbstractButton::clicked, this, [this] { selectNextSearchResult(); });
 }
 
 SnapshotUsageWidget::~SnapshotUsageWidget()
@@ -168,6 +190,8 @@ void SnapshotUsageWidget::setSnapshot(std::shared_ptr<const Snapshot> snapshot)
 		? QTreeWidgetItem::DontShowIndicator : QTreeWidgetItem::ShowIndicator);
 	setItemToolTip(*rootItem, entryQualification(m_snapshot->root));
 	m_ui->usageTree->addTopLevelItem(rootItem);
+	populateChildren(rootItem);
+	rootItem->setExpanded(true);
 }
 
 void SnapshotUsageWidget::clearSnapshot()
@@ -175,14 +199,115 @@ void SnapshotUsageWidget::clearSnapshot()
 	m_ui->usageTree->clear();
 	m_hardLinkPresentationByAlias.clear();
 	m_snapshot.reset();
+	m_lastSearchPath.reset();
+	m_ui->searchEdit->clear();
+	m_ui->findNextButton->setEnabled(false);
+	m_ui->searchStatusLabel->clear();
+	m_ui->searchStatusLabel->setToolTip(QString{});
+	m_ui->revealSelectedButton->setEnabled(false);
 	m_ui->snapshotContextLabel->setText("No current snapshot available.");
 	m_ui->snapshotQualificationLabel->clear();
 }
 
+bool SnapshotUsageWidget::selectPath(const NativePath& path)
+{
+	if (!m_snapshot)
+		return false;
+	const std::optional<std::vector<NativeName>> components = nativeDescendantComponents(m_snapshot->rootPath, path);
+	if (!components)
+		return false;
+
+	auto* currentItem = usageTreeItem(m_ui->usageTree->topLevelItem(0));
+	const SnapshotEntry* currentEntry = &m_snapshot->root;
+	for (const NativeName& component : *components)
+	{
+		const auto factualChild = currentEntry->children.find(component);
+		if (factualChild == currentEntry->children.end())
+			return false;
+
+		populateChildren(currentItem);
+		currentItem->setExpanded(true);
+		SnapshotUsageTreeItem* childItem = nullptr;
+		for (int index = 0; index < currentItem->childCount(); ++index)
+		{
+			auto* candidate = usageTreeItem(currentItem->child(index));
+			if (candidate->entry == &factualChild.value())
+			{
+				childItem = candidate;
+				break;
+			}
+		}
+		assert(childItem);
+		currentItem = childItem;
+		currentEntry = &factualChild.value();
+	}
+
+	m_ui->usageTree->setCurrentItem(currentItem);
+	m_ui->usageTree->scrollToItem(currentItem, QAbstractItemView::PositionAtCenter);
+	m_ui->usageTree->setFocus();
+	return true;
+}
+
+void SnapshotUsageWidget::selectNextSearchResult()
+{
+	if (!m_snapshot || m_ui->searchEdit->text().isEmpty())
+		return;
+	const std::optional<NativePath> match = findNextMatchingPath(m_ui->searchEdit->text());
+	if (!match)
+	{
+		m_ui->searchStatusLabel->setText("No matches.");
+		m_ui->searchStatusLabel->setToolTip(QString{});
+		return;
+	}
+
+	m_lastSearchPath = match;
+	if (!selectPath(*match))
+	{
+		m_ui->searchStatusLabel->setText("The matching path could not be selected.");
+		m_ui->searchStatusLabel->setToolTip(nativePathForDisplay(*match));
+		return;
+	}
+	m_ui->searchStatusLabel->setText("Match selected.");
+	m_ui->searchStatusLabel->setToolTip(nativePathForDisplay(*match));
+}
+
+std::optional<NativePath> SnapshotUsageWidget::findNextMatchingPath(const QString& query) const
+{
+	assert(m_snapshot);
+#ifdef _WIN32
+	constexpr Qt::CaseSensitivity caseSensitivity = Qt::CaseInsensitive;
+#else
+	constexpr Qt::CaseSensitivity caseSensitivity = Qt::CaseSensitive;
+#endif
+	std::optional<NativePath> firstMatch;
+	std::optional<NativePath> nextMatch;
+	bool passedLastMatch = !m_lastSearchPath;
+	auto visit = [&](auto&& self, const SnapshotEntry& entry, const NativePath& path) -> bool {
+		const bool matches = nativePathForDisplay(path).contains(query, caseSensitivity);
+		if (matches && !firstMatch)
+			firstMatch = path;
+		if (m_lastSearchPath && path == *m_lastSearchPath)
+			passedLastMatch = true;
+		else if (matches && passedLastMatch)
+		{
+			nextMatch = path;
+			return true;
+		}
+
+		for (const auto& [name, child] : entry.children)
+		{
+			if (self(self, child, appendNativeName(path, name)))
+				return true;
+		}
+		return false;
+	};
+	visit(visit, m_snapshot->root, m_snapshot->rootPath);
+	return nextMatch ? nextMatch : firstMatch;
+}
+
 void SnapshotUsageWidget::populateChildren(QTreeWidgetItem* item)
 {
-	auto* parentItem = dynamic_cast<SnapshotUsageTreeItem*>(item);
-	assert(parentItem);
+	auto* parentItem = usageTreeItem(item);
 	if (parentItem->childrenPopulated)
 		return;
 	parentItem->childrenPopulated = true;

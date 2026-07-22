@@ -5,6 +5,7 @@
 #include <QUrl>
 
 #include <assert.h>
+#include <utility>
 
 bool isAbsoluteNativePath(const NativePath& path) noexcept
 {
@@ -73,6 +74,49 @@ NativePath appendNativeName(const NativePath& parentPath, const NativeName& name
 		result += separator;
 	result += name;
 	return result;
+}
+
+std::optional<std::vector<NativeName>> nativeDescendantComponents(
+	const NativePath& rootPath, const NativePath& path)
+{
+	if (!isAbsoluteNativePath(rootPath) || !isAbsoluteNativePath(path))
+		return {};
+	if (path == rootPath)
+		return std::vector<NativeName>{};
+
+#ifdef _WIN32
+	constexpr QChar separator = '\\';
+#else
+	constexpr char separator = '/';
+#endif
+	NativePath descendantPrefix = rootPath;
+	if (!descendantPrefix.endsWith(separator))
+		descendantPrefix += separator;
+	if (!path.startsWith(descendantPrefix))
+		return {};
+
+	const NativePath relativePath = path.mid(descendantPrefix.size());
+	std::vector<NativeName> components;
+	decltype(relativePath.size()) componentStart = 0;
+	while (componentStart < relativePath.size())
+	{
+		auto componentEnd = relativePath.indexOf(separator, componentStart);
+		if (componentEnd < 0)
+			componentEnd = relativePath.size();
+		if (componentEnd == componentStart)
+			return {};
+
+		NativeName component = relativePath.mid(componentStart, componentEnd - componentStart);
+#ifdef _WIN32
+		if (component.contains('/'))
+			return {};
+#endif
+		components.push_back(std::move(component));
+		componentStart = componentEnd + 1;
+	}
+	if (components.empty() || relativePath.endsWith(separator))
+		return {};
+	return components;
 }
 
 QString nativePathForDisplay(const NativePath& path)

@@ -66,6 +66,32 @@ TEST_CASE("Native child paths are joined before display conversion", "[native-pa
 #endif
 }
 
+TEST_CASE("Native descendant components preserve factual path names", "[native-path]")
+{
+#ifdef _WIN32
+	const NativePath root = R"(C:\root)";
+	const NativePath descendant = R"(C:\root\first\second)";
+	const NativePath siblingDescendant = R"(C:\root-sibling\child)";
+	const std::vector<NativeName> expected{QStringLiteral("first"), QStringLiteral("second")};
+#else
+	const NativePath root = "/root";
+	NativeName nonUtf8Name;
+	nonUtf8Name.push_back(static_cast<char>(0xFF));
+	nonUtf8Name += "-name";
+	const NativePath descendant = appendNativeName(appendNativeName(root, "first"), nonUtf8Name);
+	const NativePath siblingDescendant = "/root-sibling/child";
+	const std::vector<NativeName> expected{NativeName{"first"}, nonUtf8Name};
+#endif
+
+	const auto rootComponents = nativeDescendantComponents(root, root);
+	REQUIRE(rootComponents);
+	CHECK(rootComponents->empty());
+	const auto descendantComponents = nativeDescendantComponents(root, descendant);
+	REQUIRE(descendantComponents);
+	CHECK(*descendantComponents == expected);
+	CHECK_FALSE(nativeDescendantComponents(root, siblingDescendant));
+}
+
 #ifndef _WIN32
 TEST_CASE("POSIX file URLs preserve native bytes and Unicode normalization", "[native-path][posix]")
 {
@@ -85,6 +111,8 @@ TEST_CASE("Extended Windows roots remain opaque", "[native-path][windows]")
 
 	REQUIRE(normalized);
 	CHECK(*normalized == extended);
+	CHECK((nativeDescendantComponents(R"(\\?\C:\root)", R"(\\?\C:\root\folder\Leaf)")
+		== std::vector<NativeName>{QStringLiteral("folder"), QStringLiteral("Leaf")}));
 }
 
 TEST_CASE("Windows drive and UNC normalization preserves native spelling", "[native-path][windows]")
@@ -93,6 +121,8 @@ TEST_CASE("Windows drive and UNC normalization preserves native spelling", "[nat
 	REQUIRE(drive);
 	CHECK(*drive == R"(c:\MiXeD\Leaf)");
 	CHECK(isAbsoluteNativePath(*drive));
+	CHECK((nativeDescendantComponents(R"(C:\)", R"(C:\folder\Leaf)")
+		== std::vector<NativeName>{QStringLiteral("folder"), QStringLiteral("Leaf")}));
 
 	const auto unc = normalizedAbsoluteNativePath(R"(\\Server\Share\folder\..\Leaf)");
 	REQUIRE(unc);
@@ -103,5 +133,10 @@ TEST_CASE("Windows drive and UNC normalization preserves native spelling", "[nat
 	const auto opaque = normalizedAbsoluteNativePath(extendedUnc);
 	REQUIRE(opaque);
 	CHECK(*opaque == extendedUnc);
+
+	CHECK((nativeDescendantComponents(R"(\\Server\Share)", R"(\\Server\Share\folder\Leaf)")
+		== std::vector<NativeName>{QStringLiteral("folder"), QStringLiteral("Leaf")}));
+	CHECK((nativeDescendantComponents(R"(\\?\UNC\Server\Share)", R"(\\?\UNC\Server\Share\folder\Leaf)")
+		== std::vector<NativeName>{QStringLiteral("folder"), QStringLiteral("Leaf")}));
 }
 #endif

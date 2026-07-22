@@ -33,11 +33,35 @@ constexpr int ByteCountRole = Qt::UserRole + 1;
 constexpr int GrowthViewIndex = 0;
 constexpr int UsageViewIndex = 1;
 
-QTableWidgetItem* createByteCountItem(const uint64_t bytes)
+class ByteCountTableItem final : public QTableWidgetItem
 {
-	auto* item = new QTableWidgetItem{formatByteCount(bytes)};
-	item->setData(ByteCountRole, static_cast<qulonglong>(bytes));
-	return item;
+public:
+	ByteCountTableItem(const uint64_t bytes, NativePath path)
+		: QTableWidgetItem{formatByteCount(bytes)}, m_path{std::move(path)}
+	{
+		setData(ByteCountRole, static_cast<qulonglong>(bytes));
+	}
+
+	bool operator<(const QTableWidgetItem& other) const override
+	{
+		const auto* otherByteCount = dynamic_cast<const ByteCountTableItem*>(&other);
+		if (!otherByteCount)
+			return QTableWidgetItem::operator<(other);
+		const qulonglong bytes = data(ByteCountRole).toULongLong();
+		const qulonglong otherBytes = otherByteCount->data(ByteCountRole).toULongLong();
+		if (bytes != otherBytes)
+			return bytes < otherBytes;
+		const bool descending = tableWidget() && tableWidget()->horizontalHeader()->sortIndicatorOrder() == Qt::DescendingOrder;
+		return descending ? otherByteCount->m_path < m_path : m_path < otherByteCount->m_path;
+	}
+
+private:
+	NativePath m_path;
+};
+
+QTableWidgetItem* createByteCountItem(const uint64_t bytes, const NativePath& path)
+{
+	return new ByteCountTableItem{bytes, path};
 }
 
 QString formatElapsedTime(const qint64 elapsedMilliseconds)
@@ -378,9 +402,12 @@ MainWindow::MainWindow(QWidget* parent)
 		assert(m_scanElapsedTimer.isValid());
 		m_ui->scanDurationLabel->setText("Elapsed: " + formatElapsedTime(m_scanElapsedTimer.elapsed()));
 	});
-	connect(m_ui->changesTable, &QTableWidget::itemActivated, this, [this](QTableWidgetItem* item) { openTableItem(item); });
-	connect(m_ui->excludedTable, &QTableWidget::itemActivated, this, [this](QTableWidgetItem* item) { openTableItem(item); });
-	connect(m_ui->diagnosticsTable, &QTableWidget::itemActivated, this, [this](QTableWidgetItem* item) { openTableItem(item); });
+	connect(m_ui->changesTable, &QTableWidget::itemActivated, this, [this](QTableWidgetItem* item) { revealTableItemInFileManager(item); });
+	connect(m_ui->excludedTable, &QTableWidget::itemActivated, this, [this](QTableWidgetItem* item) { revealTableItemInFileManager(item); });
+	connect(m_ui->diagnosticsTable, &QTableWidget::itemActivated, this, [this](QTableWidgetItem* item) { revealTableItemInFileManager(item); });
+	connect(m_ui->changesTable, &QTableWidget::itemSelectionChanged, this, [this] { updateGrowthActions(); });
+	connect(m_ui->showInUsageButton, &QAbstractButton::clicked, this, [this] { showSelectedGrowthInCurrentUsage(); });
+	connect(m_ui->revealGrowthButton, &QAbstractButton::clicked, this, [this] { revealSelectedGrowthInFileManager(); });
 	connect(m_ui->snapshotUsageWidget, &SnapshotUsageWidget::pathActivated, this, [this](const NativePath& path) { revealPath(path); });
 
 	for (QTableWidget* table : {m_ui->changesTable, m_ui->excludedTable, m_ui->diagnosticsTable})
@@ -396,6 +423,8 @@ MainWindow::MainWindow(QWidget* parent)
 	m_ui->excludedTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
 	m_ui->diagnosticsTable->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
 	m_ui->diagnosticsTable->horizontalHeader()->setSectionResizeMode(4, QHeaderView::Stretch);
+	m_ui->changesTable->setSortingEnabled(true);
+	m_ui->changesTable->sortItems(0, Qt::DescendingOrder);
 
 	CSettings settings;
 	m_ui->rootPathEdit->setText(settings.value(Settings::Path).toString());
@@ -403,6 +432,7 @@ MainWindow::MainWindow(QWidget* parent)
 	m_ui->thresholdSpinBox->setEnabled(false);
 	m_ui->resultViewTabs->setTabEnabled(GrowthViewIndex, false);
 	m_ui->resultViewTabs->setTabEnabled(UsageViewIndex, false);
+	m_ui->growthActionsWidget->setVisible(false);
 	m_scanElapsedUpdateTimer.setInterval(1000);
 	m_publicationTimer.start(33);
 }
@@ -607,6 +637,7 @@ void MainWindow::clearCurrentSnapshot()
 	m_ui->snapshotUsageWidget->clearSnapshot();
 	m_currentSnapshot.reset();
 	m_ui->resultViewTabs->setTabEnabled(UsageViewIndex, false);
+	updateGrowthActions();
 }
 
 void MainWindow::adoptCurrentSnapshot(std::shared_ptr<const Snapshot> snapshot)
@@ -615,6 +646,7 @@ void MainWindow::adoptCurrentSnapshot(std::shared_ptr<const Snapshot> snapshot)
 	m_currentSnapshot = std::move(snapshot);
 	m_ui->snapshotUsageWidget->setSnapshot(m_currentSnapshot);
 	m_ui->resultViewTabs->setTabEnabled(UsageViewIndex, true);
+	updateGrowthActions();
 }
 
 void MainWindow::saveCreatedSnapshot(const Snapshot& snapshot)
@@ -701,20 +733,39 @@ void MainWindow::displayComparison()
 		return left.allocatedIncrease != right.allocatedIncrease
 			? left.allocatedIncrease > right.allocatedIncrease : left.path < right.path;
 	});
+	const int sortColumn = m_ui->changesTable->horizontalHeader()->sortIndicatorSection();
+	const Qt::SortOrder sortOrder = m_ui->changesTable->horizontalHeader()->sortIndicatorOrder();
+	m_ui->changesTable->setSortingEnabled(false);
 	m_ui->changesTable->setRowCount(static_cast<int>(changes.size()));
 	for (int row = 0; row < static_cast<int>(changes.size()); ++row)
 	{
 		const auto& change = changes[static_cast<size_t>(row)];
-		m_ui->changesTable->setItem(row, 0, createByteCountItem(change.allocatedIncrease));
+		m_ui->changesTable->setItem(row, 0, createByteCountItem(change.allocatedIncrease, change.path));
 		m_ui->changesTable->setItem(row, 1, new QTableWidgetItem{nativePathForDisplay(change.path)});
 		auto* typeItem = new QTableWidgetItem{comparisonChangeType(change)};
 		if (change.currentEntryKind == thin_io::entry_kind::directory)
 			typeItem->setToolTip("Net allocated-size change for this folder's comparable subtree.");
 		m_ui->changesTable->setItem(row, 2, typeItem);
-		m_ui->changesTable->setItem(row, 3, createByteCountItem(change.baselineSubtreeAllocatedSize));
-		m_ui->changesTable->setItem(row, 4, createByteCountItem(change.currentSubtreeAllocatedSize));
+		m_ui->changesTable->setItem(row, 3, createByteCountItem(change.baselineSubtreeAllocatedSize, change.path));
+		m_ui->changesTable->setItem(row, 4, createByteCountItem(change.currentSubtreeAllocatedSize, change.path));
 		setRowPath(*m_ui->changesTable, row, change.path);
 	}
+	m_ui->changesTable->setSortingEnabled(true);
+	m_ui->changesTable->sortItems(sortColumn < 0 ? 0 : sortColumn, sortOrder);
+	const bool hasChanges = !changes.empty();
+	m_ui->changesTable->setVisible(hasChanges);
+	m_ui->growthActionsWidget->setVisible(hasChanges);
+	m_ui->changesEmptyLabel->setVisible(!hasChanges);
+	if (!hasChanges)
+	{
+		if (comparison.hasPositiveChangeBelowThreshold)
+			m_ui->changesEmptyLabel->setText("Positive growth exists, but no location reaches the current display threshold.");
+		else if (!comparison.excludedRegions.empty())
+			m_ui->changesEmptyLabel->setText("No positive growth was found in comparable regions. Some regions could not be compared.");
+		else
+			m_ui->changesEmptyLabel->setText("No positive growth was found.");
+	}
+	updateGrowthActions();
 
 	m_ui->excludedTable->setRowCount(static_cast<int>(comparison.excludedRegions.size()));
 	for (int row = 0; row < static_cast<int>(comparison.excludedRegions.size()); ++row)
@@ -747,6 +798,10 @@ void MainWindow::clearComparisonDisplay()
 	m_ui->comparisonNoticeLabel->clear();
 	m_ui->comparisonDetailsLabel->clear();
 	m_ui->changesTable->setRowCount(0);
+	m_ui->changesTable->setVisible(true);
+	m_ui->changesEmptyLabel->setVisible(false);
+	m_ui->growthActionsWidget->setVisible(false);
+	updateGrowthActions();
 	m_ui->excludedTable->setRowCount(0);
 	m_ui->diagnosticsTable->setRowCount(0);
 	m_ui->detailsTabs->setTabText(0, "Excluded regions");
@@ -799,7 +854,35 @@ void MainWindow::updateDetailsDisclosure()
 		m_ui->detailsButton->setChecked(false);
 }
 
-void MainWindow::openTableItem(const QTableWidgetItem* item)
+void MainWindow::updateGrowthActions()
+{
+	const QTableWidgetItem* selectedItem = m_ui->changesTable->currentItem();
+	const bool hasSelectedPath = selectedItem && !m_ui->changesTable->selectedItems().isEmpty()
+		&& selectedItem->data(Qt::UserRole).isValid();
+	m_ui->showInUsageButton->setEnabled(hasSelectedPath && m_ui->resultViewTabs->isTabEnabled(UsageViewIndex));
+	m_ui->revealGrowthButton->setEnabled(hasSelectedPath);
+}
+
+void MainWindow::showSelectedGrowthInCurrentUsage()
+{
+	const QTableWidgetItem* selectedItem = m_ui->changesTable->currentItem();
+	if (!selectedItem || !selectedItem->data(Qt::UserRole).isValid())
+		return;
+	const NativePath path = storedNativePath(*selectedItem);
+	m_ui->resultViewTabs->setCurrentIndex(UsageViewIndex);
+	if (m_ui->snapshotUsageWidget->selectPath(path))
+		return;
+
+	m_ui->resultViewTabs->setCurrentIndex(GrowthViewIndex);
+	m_ui->scanStatusLabel->setText("The selected growth path is not available in the current snapshot view.");
+}
+
+void MainWindow::revealSelectedGrowthInFileManager()
+{
+	revealTableItemInFileManager(m_ui->changesTable->currentItem());
+}
+
+void MainWindow::revealTableItemInFileManager(const QTableWidgetItem* item)
 {
 	if (!item || !item->data(Qt::UserRole).isValid())
 		return;

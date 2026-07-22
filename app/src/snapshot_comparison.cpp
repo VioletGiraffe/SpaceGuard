@@ -343,7 +343,12 @@ void compareEntries(const ComparisonSide& baseline, const ComparisonSide& curren
 	if (!baselineSubtreeSize || !currentSubtreeSize || *currentSubtreeSize <= *baselineSubtreeSize)
 		return;
 	const uint64_t allocatedIncrease = *currentSubtreeSize - *baselineSubtreeSize;
-	if (allocatedIncrease >= threshold && result.changes.size() == changesBeforeChildren)
+	if (allocatedIncrease < threshold)
+	{
+		result.hasPositiveChangeBelowThreshold = true;
+		return;
+	}
+	if (result.changes.size() == changesBeforeChildren)
 	{
 		assert(current.entry);
 		ComparisonChange change;

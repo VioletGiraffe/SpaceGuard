@@ -245,6 +245,11 @@ TEST_CASE("Comparison reports lowest significant positive changes", "[snapshot][
 	const auto aboveThreshold = compareSnapshots(baseline, current, 111);
 	REQUIRE(aboveThreshold);
 	CHECK(aboveThreshold->changes.empty());
+	CHECK(aboveThreshold->hasPositiveChangeBelowThreshold);
+
+	const auto withoutThreshold = compareSnapshots(baseline, current, 0);
+	REQUIRE(withoutThreshold);
+	CHECK_FALSE(withoutThreshold->hasPositiveChangeBelowThreshold);
 }
 
 TEST_CASE("Comparison reports an aggregate when significant descendants are absent", "[snapshot][comparison]")
