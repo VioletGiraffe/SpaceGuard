@@ -44,7 +44,9 @@ SOURCES += \
 	src/snapshot.cpp \
 	src/snapshot_comparison.cpp \
 	src/snapshot_scan_runner.cpp \
-	src/snapshot_scanner.cpp
+	src/snapshot_scanner.cpp \
+	src/snapshot_usage_widget.cpp \
+	src/ui_format.cpp
 
 ###################################################
 #                 LIBS
@@ -93,7 +95,8 @@ linux*|mac*|freebsd {
 }
 
 FORMS += \
-	src/mainwindow.ui
+	src/mainwindow.ui \
+	src/snapshot_usage_widget.ui
 
 HEADERS += \
 	src/filesystem_access.h \
@@ -104,4 +107,6 @@ HEADERS += \
 	src/snapshot_comparison.h \
 	src/snapshot_internal.h \
 	src/snapshot_scan_runner.h \
-	src/snapshot_scanner.h
+	src/snapshot_scanner.h \
+	src/snapshot_usage_widget.h \
+	src/ui_format.h

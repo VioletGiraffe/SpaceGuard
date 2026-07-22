@@ -25,18 +25,23 @@ public:
 
 private:
 	enum class ScanPurpose : uint8_t {
-		create_snapshot,
-		compare_with_snapshot
+		create_baseline,
+		compare_with_baseline,
+		inspect_current_usage
 	};
 
 	void chooseRootDirectory();
-	void createSnapshot();
-	void compareWithSnapshot();
+	void createBaseline();
+	void findGrowth();
+	void inspectCurrentUsage();
 	void cancelScan();
+	[[nodiscard]] std::optional<NativePath> validatedSelectedRootPath();
 	void beginScan(ScanPurpose purpose, const NativePath& rootPath);
 	void updateScanProgress(uint64_t generation, const SnapshotScanProgress& progress);
 	void scanCompleted(uint64_t generation, const std::shared_ptr<const SnapshotScanResult>& result);
 	void setScanActive(bool active);
+	void clearCurrentSnapshot();
+	void adoptCurrentSnapshot(std::shared_ptr<const Snapshot> snapshot);
 
 	void saveCreatedSnapshot(const Snapshot& snapshot);
 	void recalculateComparison(bool reportError = false);
@@ -46,6 +51,7 @@ private:
 	void populateCompletedScanDiagnostics(const Snapshot& snapshot);
 	void updateDetailsDisclosure();
 	void openTableItem(const QTableWidgetItem* item);
+	void revealPath(const NativePath& path);
 
 	std::unique_ptr<Ui::MainWindow> m_ui;
 	CExecutionQueue m_publicationQueue;

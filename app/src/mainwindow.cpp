@@ -1,6 +1,8 @@
 #include "mainwindow.h"
 
 #include "settings.h"
+#include "snapshot_usage_widget.h"
+#include "ui_format.h"
 #include "ui_mainwindow.h"
 
 #include "filesystem_error.hpp"
@@ -12,7 +14,6 @@
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QHeaderView>
-#include <QLocale>
 #include <QMessageBox>
 #include <QProcess>
 #include <QTableWidget>
@@ -29,28 +30,12 @@ namespace {
 constexpr auto SnapshotExtension = ".spaceguard";
 constexpr uint64_t BytesPerMiB = 1024 * 1024;
 constexpr int ByteCountRole = Qt::UserRole + 1;
-
-QString formatBytes(const uint64_t bytes)
-{
-	constexpr uint64_t KiB = 1024;
-	constexpr uint64_t MiB = KiB * 1024;
-	constexpr uint64_t GiB = MiB * 1024;
-	constexpr uint64_t TiB = GiB * 1024;
-
-	if (bytes < KiB)
-		return QString::number(static_cast<qulonglong>(bytes)) + " B";
-	if (bytes < MiB)
-		return QString::number(static_cast<double>(bytes) / KiB, 'f', 1) + " KiB";
-	if (bytes < GiB)
-		return QString::number(static_cast<double>(bytes) / MiB, 'f', 1) + " MiB";
-	if (bytes < TiB)
-		return QString::number(static_cast<double>(bytes) / GiB, 'f', 1) + " GiB";
-	return QString::number(static_cast<double>(bytes) / TiB, 'f', 1) + " TiB";
-}
+constexpr int GrowthViewIndex = 0;
+constexpr int UsageViewIndex = 1;
 
 QTableWidgetItem* createByteCountItem(const uint64_t bytes)
 {
-	auto* item = new QTableWidgetItem{formatBytes(bytes)};
+	auto* item = new QTableWidgetItem{formatByteCount(bytes)};
 	item->setData(ByteCountRole, static_cast<qulonglong>(bytes));
 	return item;
 }
@@ -80,9 +65,9 @@ QString formatChange(const std::optional<MagnitudeChange>& change)
 	case ChangeDirection::unchanged:
 		return "No change";
 	case ChangeDirection::increase:
-		return "+" + formatBytes(change->magnitude);
+		return "+" + formatByteCount(change->magnitude);
 	case ChangeDirection::decrease:
-		return "-" + formatBytes(change->magnitude);
+		return "-" + formatByteCount(change->magnitude);
 	}
 	return "Unavailable";
 }
@@ -106,15 +91,10 @@ QString formatUsageChange(const std::optional<MagnitudeChange>& change)
 	switch (change->direction)
 	{
 	case ChangeDirection::unchanged: return "No change";
-	case ChangeDirection::increase: return formatBytes(change->magnitude) + " more used";
-	case ChangeDirection::decrease: return formatBytes(change->magnitude) + " less used";
+	case ChangeDirection::increase: return formatByteCount(change->magnitude) + " more used";
+	case ChangeDirection::decrease: return formatByteCount(change->magnitude) + " less used";
 	}
 	return "Unavailable";
-}
-
-QString formatSnapshotTime(const QDateTime& utcTime)
-{
-	return QLocale{}.toString(utcTime.toLocalTime(), QLocale::ShortFormat);
 }
 
 QString comparisonContext(const Snapshot& baseline, const Snapshot& current)
@@ -139,16 +119,16 @@ QString comparisonHeadline(const SnapshotComparisonResult& comparison, const uin
 		switch (treeChange->direction)
 		{
 		case ChangeDirection::increase:
-			return "Growth found in " + locationText + ". The scanned tree uses " + formatBytes(treeChange->magnitude) + " more overall.";
+			return "Growth found in " + locationText + ". The scanned tree uses " + formatByteCount(treeChange->magnitude) + " more overall.";
 		case ChangeDirection::decrease:
-			return "Growth found in " + locationText + ". The scanned tree uses " + formatBytes(treeChange->magnitude)
+			return "Growth found in " + locationText + ". The scanned tree uses " + formatByteCount(treeChange->magnitude)
 				+ " less overall because deletions and shrinkage outweighed this growth.";
 		case ChangeDirection::unchanged:
 			return "Growth found in " + locationText + ", offset by equal deletions or shrinkage elsewhere in the scanned tree.";
 		}
 	}
 
-	const QString thresholdText = threshold == 0 ? "positive growth" : "growth of at least " + formatBytes(threshold);
+	const QString thresholdText = threshold == 0 ? "positive growth" : "growth of at least " + formatByteCount(threshold);
 	if (!treeChange)
 		return "No comparable " + thresholdText + " was found. Complete net accounting is unavailable.";
 
@@ -156,11 +136,11 @@ QString comparisonHeadline(const SnapshotComparisonResult& comparison, const uin
 	{
 	case ChangeDirection::increase:
 		if (threshold == 0)
-			return "The scanned tree uses " + formatBytes(treeChange->magnitude) + " more, but no comparable positive-growth location was available.";
-		return "The scanned tree uses " + formatBytes(treeChange->magnitude) + " more, but no location reached the "
-			+ formatBytes(threshold) + " display threshold.";
+			return "The scanned tree uses " + formatByteCount(treeChange->magnitude) + " more, but no comparable positive-growth location was available.";
+		return "The scanned tree uses " + formatByteCount(treeChange->magnitude) + " more, but no location reached the "
+			+ formatByteCount(threshold) + " display threshold.";
 	case ChangeDirection::decrease:
-		return "No " + thresholdText + " was found. The scanned tree uses " + formatBytes(treeChange->magnitude) + " less overall.";
+		return "No " + thresholdText + " was found. The scanned tree uses " + formatByteCount(treeChange->magnitude) + " less overall.";
 	case ChangeDirection::unchanged:
 		return "No " + thresholdText + " was found, and total scanned-tree usage is unchanged.";
 	}
@@ -384,8 +364,9 @@ MainWindow::MainWindow(QWidget* parent)
 	m_ui->setupUi(this);
 
 	connect(m_ui->chooseRootButton, &QAbstractButton::clicked, this, [this] { chooseRootDirectory(); });
-	connect(m_ui->createSnapshotButton, &QAbstractButton::clicked, this, [this] { createSnapshot(); });
-	connect(m_ui->compareSnapshotButton, &QAbstractButton::clicked, this, [this] { compareWithSnapshot(); });
+	connect(m_ui->createSnapshotButton, &QAbstractButton::clicked, this, [this] { createBaseline(); });
+	connect(m_ui->compareSnapshotButton, &QAbstractButton::clicked, this, [this] { findGrowth(); });
+	connect(m_ui->inspectUsageButton, &QAbstractButton::clicked, this, [this] { inspectCurrentUsage(); });
 	connect(m_ui->cancelScanButton, &QAbstractButton::clicked, this, [this] { cancelScan(); });
 	connect(m_ui->thresholdSpinBox, &QSpinBox::valueChanged, this, [this](int) { recalculateComparison(); });
 	connect(m_ui->detailsButton, &QAbstractButton::toggled, this, [this](const bool expanded) {
@@ -400,6 +381,7 @@ MainWindow::MainWindow(QWidget* parent)
 	connect(m_ui->changesTable, &QTableWidget::itemActivated, this, [this](QTableWidgetItem* item) { openTableItem(item); });
 	connect(m_ui->excludedTable, &QTableWidget::itemActivated, this, [this](QTableWidgetItem* item) { openTableItem(item); });
 	connect(m_ui->diagnosticsTable, &QTableWidget::itemActivated, this, [this](QTableWidgetItem* item) { openTableItem(item); });
+	connect(m_ui->snapshotUsageWidget, &SnapshotUsageWidget::pathActivated, this, [this](const NativePath& path) { revealPath(path); });
 
 	for (QTableWidget* table : {m_ui->changesTable, m_ui->excludedTable, m_ui->diagnosticsTable})
 	{
@@ -419,6 +401,8 @@ MainWindow::MainWindow(QWidget* parent)
 	m_ui->rootPathEdit->setText(settings.value(Settings::Path).toString());
 	m_ui->thresholdSpinBox->setValue(settings.value(Settings::Threshold, 1024).toInt());
 	m_ui->thresholdSpinBox->setEnabled(false);
+	m_ui->resultViewTabs->setTabEnabled(GrowthViewIndex, false);
+	m_ui->resultViewTabs->setTabEnabled(UsageViewIndex, false);
 	m_scanElapsedUpdateTimer.setInterval(1000);
 	m_publicationTimer.start(33);
 }
@@ -439,22 +423,29 @@ void MainWindow::chooseRootDirectory()
 		m_ui->rootPathEdit->setText(selectedPath);
 }
 
-void MainWindow::createSnapshot()
+std::optional<NativePath> MainWindow::validatedSelectedRootPath()
 {
 	const std::optional<NativePath> rootPath = normalizedAbsoluteNativePath(m_ui->rootPathEdit->text());
 	if (!rootPath)
 	{
 		QMessageBox::warning(this, "Invalid root", "Select a valid absolute directory path.");
-		return;
 	}
-
-	m_baselineSnapshot.reset();
-	m_currentSnapshot.reset();
-	clearComparisonDisplay();
-	beginScan(ScanPurpose::create_snapshot, *rootPath);
+	return rootPath;
 }
 
-void MainWindow::compareWithSnapshot()
+void MainWindow::createBaseline()
+{
+	const std::optional<NativePath> rootPath = validatedSelectedRootPath();
+	if (!rootPath)
+		return;
+
+	m_baselineSnapshot.reset();
+	clearCurrentSnapshot();
+	clearComparisonDisplay();
+	beginScan(ScanPurpose::create_baseline, *rootPath);
+}
+
+void MainWindow::findGrowth()
 {
 	CSettings settings;
 	const QString lastUsedPath = settings.value(Settings::SavePath, QDir::currentPath()).toString();
@@ -472,11 +463,20 @@ void MainWindow::compareWithSnapshot()
 
 	settings.setValue(Settings::SavePath, QFileInfo{snapshotPath}.absolutePath());
 	m_baselineSnapshot = std::make_shared<const Snapshot>(std::move(*loaded));
-	m_currentSnapshot.reset();
+	clearCurrentSnapshot();
 	m_ui->rootPathEdit->setText(nativePathForDisplay(m_baselineSnapshot->rootPath));
 	clearComparisonDisplay();
 	populateDiagnostics();
-	beginScan(ScanPurpose::compare_with_snapshot, m_baselineSnapshot->rootPath);
+	beginScan(ScanPurpose::compare_with_baseline, m_baselineSnapshot->rootPath);
+}
+
+void MainWindow::inspectCurrentUsage()
+{
+	const std::optional<NativePath> rootPath = validatedSelectedRootPath();
+	if (!rootPath)
+		return;
+
+	beginScan(ScanPurpose::inspect_current_usage, *rootPath);
 }
 
 void MainWindow::cancelScan()
@@ -501,7 +501,7 @@ void MainWindow::beginScan(const ScanPurpose purpose, const NativePath& rootPath
 		m_activeGeneration = *generation;
 		m_scanElapsedTimer.start();
 		m_scanElapsedUpdateTimer.start();
-		m_ui->scanStatusLabel->setText(purpose == ScanPurpose::create_snapshot ? "Creating baseline..." : "Scanning current state...");
+		m_ui->scanStatusLabel->setText(purpose == ScanPurpose::create_baseline ? "Creating baseline..." : "Scanning current state...");
 		m_ui->scanCountsLabel->clear();
 		m_ui->scanDurationLabel->setText("Elapsed: <1 s");
 		setScanActive(true);
@@ -566,16 +566,28 @@ void MainWindow::scanCompleted(
 			.arg(issueCount).arg(issueCount == 1 ? "" : "s").arg(scanIssueSummary(snapshot.diagnostics)));
 	}
 	m_ui->scanDurationLabel->setText("Scan time: " + elapsedTime);
-	if (purpose == ScanPurpose::create_snapshot)
+	if (purpose == ScanPurpose::create_baseline)
 	{
+		adoptCurrentSnapshot(completedSnapshot);
 		populateCompletedScanDiagnostics(snapshot);
 		saveCreatedSnapshot(snapshot);
+		m_ui->resultViewTabs->setCurrentIndex(UsageViewIndex);
+		return;
+	}
+	if (purpose == ScanPurpose::inspect_current_usage)
+	{
+		m_baselineSnapshot.reset();
+		clearComparisonDisplay();
+		adoptCurrentSnapshot(completedSnapshot);
+		populateCompletedScanDiagnostics(snapshot);
+		m_ui->resultViewTabs->setCurrentIndex(UsageViewIndex);
 		return;
 	}
 
-	m_currentSnapshot = completedSnapshot;
+	adoptCurrentSnapshot(completedSnapshot);
 	populateDiagnostics();
 	recalculateComparison(true);
+	m_ui->resultViewTabs->setCurrentIndex(m_comparison ? GrowthViewIndex : UsageViewIndex);
 }
 
 void MainWindow::setScanActive(const bool active)
@@ -584,9 +596,25 @@ void MainWindow::setScanActive(const bool active)
 	m_ui->chooseRootButton->setEnabled(!active);
 	m_ui->createSnapshotButton->setEnabled(!active);
 	m_ui->compareSnapshotButton->setEnabled(!active);
+	m_ui->inspectUsageButton->setEnabled(!active);
 	m_ui->cancelScanButton->setEnabled(active);
 	m_ui->scanProgressBar->setVisible(active);
 	m_ui->thresholdSpinBox->setEnabled(!active && m_baselineSnapshot && m_currentSnapshot);
+}
+
+void MainWindow::clearCurrentSnapshot()
+{
+	m_ui->snapshotUsageWidget->clearSnapshot();
+	m_currentSnapshot.reset();
+	m_ui->resultViewTabs->setTabEnabled(UsageViewIndex, false);
+}
+
+void MainWindow::adoptCurrentSnapshot(std::shared_ptr<const Snapshot> snapshot)
+{
+	assert(snapshot);
+	m_currentSnapshot = std::move(snapshot);
+	m_ui->snapshotUsageWidget->setSnapshot(m_currentSnapshot);
+	m_ui->resultViewTabs->setTabEnabled(UsageViewIndex, true);
 }
 
 void MainWindow::saveCreatedSnapshot(const Snapshot& snapshot)
@@ -656,6 +684,8 @@ void MainWindow::displayComparison()
 	assert(m_baselineSnapshot);
 	assert(m_currentSnapshot);
 	assert(m_comparison);
+	m_ui->resultViewTabs->setTabEnabled(GrowthViewIndex, true);
+	m_ui->thresholdSpinBox->setEnabled(true);
 	const SnapshotComparisonResult& comparison = *m_comparison;
 	const auto& summary = comparison.summary;
 	const uint64_t threshold = static_cast<uint64_t>(m_ui->thresholdSpinBox->value()) * BytesPerMiB;
@@ -709,6 +739,7 @@ void MainWindow::displayComparison()
 void MainWindow::clearComparisonDisplay()
 {
 	m_comparison.reset();
+	m_ui->resultViewTabs->setTabEnabled(GrowthViewIndex, false);
 	m_ui->comparisonContextLabel->setText("No comparison available.");
 	m_ui->comparisonHeadlineLabel->clear();
 	for (QLabel* label : {m_ui->wholeVolumeUsageValueLabel, m_ui->scannedTreeUsageValueLabel, m_ui->otherVolumeUsageValueLabel})
@@ -772,7 +803,11 @@ void MainWindow::openTableItem(const QTableWidgetItem* item)
 {
 	if (!item || !item->data(Qt::UserRole).isValid())
 		return;
-	const NativePath path = storedNativePath(*item);
+	revealPath(storedNativePath(*item));
+}
+
+void MainWindow::revealPath(const NativePath& path)
+{
 	bool started = false;
 #ifdef _WIN32
 	started = QProcess::startDetached("explorer.exe", {"/select," + QDir::toNativeSeparators(path)});

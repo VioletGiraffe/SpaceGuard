@@ -45,6 +45,11 @@
        </widget>
       </item>
       <item>
+       <widget class="QPushButton" name="inspectUsageButton">
+        <property name="text"><string>Inspect current usage...</string></property>
+       </widget>
+      </item>
+      <item>
        <widget class="QPushButton" name="cancelScanButton">
         <property name="text"><string>Cancel</string></property>
         <property name="enabled"><bool>false</bool></property>
@@ -92,6 +97,12 @@
       </item>
      </layout>
     </item>
+    <item>
+     <widget class="QTabWidget" name="resultViewTabs">
+      <property name="currentIndex"><number>0</number></property>
+      <widget class="QWidget" name="growthPage">
+       <attribute name="title"><string>Growth since baseline</string></attribute>
+       <layout class="QVBoxLayout" name="growthPageLayout">
     <item>
      <widget class="QLabel" name="comparisonContextLabel">
       <property name="text"><string>No comparison available.</string></property>
@@ -238,6 +249,18 @@
       </layout>
      </widget>
     </item>
+       </layout>
+      </widget>
+      <widget class="QWidget" name="usagePage">
+       <attribute name="title"><string>Current space usage</string></attribute>
+       <layout class="QVBoxLayout" name="usagePageLayout">
+        <item>
+         <widget class="SnapshotUsageWidget" name="snapshotUsageWidget"/>
+        </item>
+       </layout>
+      </widget>
+     </widget>
+    </item>
    </layout>
   </widget>
   <widget class="QMenuBar" name="menubar">
@@ -250,8 +273,15 @@
     </rect>
    </property>
   </widget>
-  <widget class="QStatusBar" name="statusbar"/>
+ <widget class="QStatusBar" name="statusbar"/>
  </widget>
+ <customwidgets>
+  <customwidget>
+   <class>SnapshotUsageWidget</class>
+   <extends>QWidget</extends>
+   <header>snapshot_usage_widget.h</header>
+  </customwidget>
+ </customwidgets>
  <resources/>
  <connections/>
 </ui>

@@ -14,15 +14,18 @@ The product-specific code is currently small and lives in `app/src/`:
   failed, or canceled outcomes.
 - `snapshot_scan_runner.{h,cpp}` owns the scan pool, nonblocking cancellation, generation-tagged
   immutable publication, and coalesced progress through a caller-owned execution queue.
-- `mainwindow.{h,cpp,ui}` owns the create/compare/cancel workflow, UI-thread publication draining, snapshot file
-  dialogs, threshold-only recalculation, and qualified comparison presentation.
+- `mainwindow.{h,cpp,ui}` owns the create-baseline/find-growth/inspect-usage/cancel workflow, UI-thread publication
+  draining, snapshot file dialogs, threshold-only recalculation, and the two top-level result views.
+- `snapshot_usage_widget.{h,cpp,ui}` owns lazy presentation of a completed snapshot's current allocated-space tree,
+  including exact/unknown totals, percentages, boundary states, and hard-link accounting explanations.
 - Snapshot files use the `.spaceguard` extension and a versioned, platform-marked `QDataStream`/`qCompress` format
   written through `QSaveFile`. Legacy prototype snapshots are rejected.
 
 The prototype replacement is complete in source: the final snapshot model, persistence, deterministic
 accounting/comparison, native multithreaded scan, asynchronous runner, UI workflow, hardening, and cross-platform
-readiness pass are integrated. Remaining work is optional performance tuning and manual UI inspection. Performance
-and memory consumption should be kept in mind but are not primary design concerns at the current estimates.
+readiness pass are integrated. The growth-first comparison UI and current-space usage view are integrated; cross-view
+navigation, authoritative path search, and final UI polish remain. Performance and memory consumption should be kept in
+mind but are not primary design concerns at the current estimates.
 
 Windows is the primary platform. macOS and Linux support are desired.
 
