@@ -28,6 +28,7 @@ RCC_DIR     = ../build/$${OUTPUT_DIR}/$${TARGET}
 ###################################################
 
 INCLUDEPATH += \
+	src \
 	../qtutils \
 	../cpputils \
 	../cpp-template-utils \
