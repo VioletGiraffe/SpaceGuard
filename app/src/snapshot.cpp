@@ -633,24 +633,51 @@ SnapshotHardLinkGroup deriveHardLinkGroup(const thin_io::entry_identity& identit
 	return group;
 }
 
+std::optional<uint64_t> addKnownAllocatedSize(
+	const std::optional<uint64_t> total, const std::optional<uint64_t> value, bool& overflow)
+{
+	if (overflow)
+		return {};
+	if (!total)
+		return value;
+	if (!value)
+		return total;
+	if (*value > std::numeric_limits<uint64_t>::max() - *total)
+	{
+		overflow = true;
+		return {};
+	}
+	return *total + *value;
+}
+
 void aggregateDerivedData(SnapshotEntry& entry)
 {
 	entry.derived.subtreeCoverageComplete = entry.derived.localCoverageComplete;
-	entry.derived.allocationOverflow = false;
+	bool exactSizeOverflow = false;
+	bool knownSizeOverflow = false;
 	std::optional<uint64_t> subtreeAllocatedSize = entry.derived.localAllocatedSize;
+	std::optional<uint64_t> knownSubtreeAllocatedSize = entry.derived.localAllocatedSize;
 
 	for (auto namedChild : entry.children)
 	{
 		SnapshotEntry& child = namedChild.second;
 		aggregateDerivedData(child);
 		entry.derived.subtreeCoverageComplete &= child.derived.subtreeCoverageComplete;
+		exactSizeOverflow |= child.derived.allocationOverflow;
+		knownSizeOverflow |= child.derived.allocationOverflow;
 		subtreeAllocatedSize = SnapshotInternal::addAllocatedSizes(
-			subtreeAllocatedSize, child.derived.subtreeAllocatedSize, entry.derived.allocationOverflow);
+			subtreeAllocatedSize, child.derived.subtreeAllocatedSize, exactSizeOverflow);
+		knownSubtreeAllocatedSize = addKnownAllocatedSize(
+			knownSubtreeAllocatedSize, child.derived.knownSubtreeAllocatedSizeLowerBound, knownSizeOverflow);
 	}
 
-	if (!entry.derived.subtreeCoverageComplete)
+	if (!entry.derived.subtreeCoverageComplete || exactSizeOverflow)
 		subtreeAllocatedSize.reset();
+	if (knownSizeOverflow)
+		knownSubtreeAllocatedSize.reset();
+	entry.derived.allocationOverflow = exactSizeOverflow || knownSizeOverflow;
 	entry.derived.subtreeAllocatedSize = subtreeAllocatedSize;
+	entry.derived.knownSubtreeAllocatedSizeLowerBound = knownSubtreeAllocatedSize;
 }
 
 } // namespace

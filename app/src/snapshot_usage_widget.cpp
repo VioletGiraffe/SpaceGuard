@@ -35,11 +35,37 @@ public:
 	bool childrenPopulated = false;
 };
 
-std::optional<uint64_t> displayedAllocatedSize(const SnapshotEntry& entry)
+struct DisplayedAllocation
+{
+	std::optional<uint64_t> bytes;
+	bool exact = false;
+	bool overflow = false;
+};
+
+std::optional<uint64_t> exactDisplayedAllocatedSize(const SnapshotEntry& entry)
 {
 	if (entry.attributes.kind == thin_io::entry_kind::directory)
 		return entry.derived.subtreeAllocatedSize;
 	return entry.derived.localAllocatedSize;
+}
+
+DisplayedAllocation displayedAllocation(const SnapshotEntry& entry)
+{
+	if (const std::optional<uint64_t> exactSize = exactDisplayedAllocatedSize(entry))
+		return {*exactSize, true, false};
+	if (entry.derived.allocationOverflow)
+		return {{}, false, true};
+	return {entry.derived.knownSubtreeAllocatedSizeLowerBound, false, false};
+}
+
+QString formatDisplayedAllocation(const DisplayedAllocation& allocation)
+{
+	if (allocation.overflow)
+		return "Overflow";
+	if (!allocation.bytes)
+		return "Unknown";
+	const QString formatted = formatByteCount(*allocation.bytes);
+	return allocation.exact ? formatted : QString{QChar{0x2265}} + " " + formatted;
 }
 
 QString formatPercentage(const std::optional<uint64_t> numerator, const std::optional<uint64_t> denominator)
@@ -53,8 +79,9 @@ QString entryStateSuffix(const SnapshotEntry& entry)
 {
 	switch (entry.traversalState)
 	{
-	case DirectoryTraversalState::enumeration_failed: return " (incomplete)";
-	case DirectoryTraversalState::metadata_unavailable: return " (metadata unavailable)";
+	case DirectoryTraversalState::enumeration_failed:
+	case DirectoryTraversalState::metadata_unavailable:
+		return {};
 	case DirectoryTraversalState::link_boundary: return " (link boundary)";
 	case DirectoryTraversalState::mount_boundary: return " (mount boundary)";
 	case DirectoryTraversalState::not_directory: return entry.attributes.is_link ? " (link)" : QString{};
@@ -86,10 +113,13 @@ QString entryQualification(const SnapshotEntry& entry)
 	}
 	if (entry.attributes.is_link && entry.traversalState != DirectoryTraversalState::link_boundary)
 		qualifications.push_back("This link target was intentionally not traversed.");
-	if (entry.derived.allocationOverflow)
+	const DisplayedAllocation allocation = displayedAllocation(entry);
+	if (allocation.overflow)
 		qualifications.push_back("Allocated-size arithmetic overflowed; the subtree total is unavailable.");
-	else if (!displayedAllocatedSize(entry))
-		qualifications.push_back("Complete allocated-size accounting is unavailable.");
+	else if (!allocation.exact && allocation.bytes)
+		qualifications.push_back("The complete total is unavailable; the displayed value includes known allocated space only.");
+	else if (!allocation.exact)
+		qualifications.push_back("No allocated-size contribution is known.");
 	return qualifications.join(' ');
 }
 
@@ -163,29 +193,26 @@ void SnapshotUsageWidget::setSnapshot(std::shared_ptr<const Snapshot> snapshot)
 		}
 	}
 
-	const std::optional<uint64_t> rootSize = displayedAllocatedSize(m_snapshot->root);
-	const QString sizeText = rootSize ? formatByteCount(*rootSize) : "Unknown";
+	const DisplayedAllocation rootAllocation = displayedAllocation(m_snapshot->root);
+	const std::optional<uint64_t> exactRootSize = exactDisplayedAllocatedSize(m_snapshot->root);
+	const QString sizeText = formatDisplayedAllocation(rootAllocation);
 	m_ui->snapshotContextLabel->setText(QString{"%1    Scanned: %2    Allocated: %3"}
 		.arg(nativePathForDisplay(m_snapshot->rootPath)).arg(formatSnapshotTime(m_snapshot->scanCompletedAtUtc)).arg(sizeText));
 
-	QStringList qualifications;
-	if (!m_snapshot->root.derived.subtreeCoverageComplete)
-		qualifications.push_back("Directory coverage is incomplete.");
-	if (!m_snapshot->root.derived.subtreeAllocatedSize)
-		qualifications.push_back(m_snapshot->root.derived.allocationOverflow
-			? "Allocated-size arithmetic overflowed." : "Complete allocated-size accounting is unavailable.");
-	if (!m_snapshot->diagnostics.empty())
-	{
-		const auto issueCount = static_cast<qulonglong>(m_snapshot->diagnostics.size());
-		qualifications.push_back(QString{"%1 scan issue%2 recorded."}.arg(issueCount).arg(issueCount == 1 ? "" : "s"));
-	}
-	m_ui->snapshotQualificationLabel->setText(qualifications.empty() ? "Complete scan and allocated-size accounting." : qualifications.join(' '));
+	QString qualification;
+	if (rootAllocation.overflow)
+		qualification = "Some allocated-size totals overflowed and are marked Overflow.";
+	else if (!rootAllocation.exact)
+		qualification = QString{QChar{0x2265}}
+			+ " marks a known lower bound where some contents could not be measured; Unknown means no allocation is known.";
+	m_ui->snapshotQualificationLabel->setText(qualification);
+	m_ui->snapshotQualificationLabel->setVisible(!qualification.isEmpty());
 
 	auto* rootItem = new SnapshotUsageTreeItem{m_snapshot->root, m_snapshot->rootPath};
 	rootItem->setText(NameColumn, nativePathForDisplay(m_snapshot->rootPath));
 	rootItem->setText(AllocatedColumn, sizeText);
 	rootItem->setText(ParentPercentageColumn, "-");
-	rootItem->setText(RootPercentageColumn, rootSize && *rootSize != 0 ? "100.0%" : "-");
+	rootItem->setText(RootPercentageColumn, exactRootSize && *exactRootSize != 0 ? "100.0%" : "-");
 	rootItem->setChildIndicatorPolicy(m_snapshot->root.children.empty()
 		? QTreeWidgetItem::DontShowIndicator : QTreeWidgetItem::ShowIndicator);
 	setItemToolTip(*rootItem, entryQualification(m_snapshot->root));
@@ -207,6 +234,7 @@ void SnapshotUsageWidget::clearSnapshot()
 	m_ui->revealSelectedButton->setEnabled(false);
 	m_ui->snapshotContextLabel->setText("No current snapshot available.");
 	m_ui->snapshotQualificationLabel->clear();
+	m_ui->snapshotQualificationLabel->setVisible(false);
 }
 
 bool SnapshotUsageWidget::selectPath(const NativePath& path)
@@ -316,27 +344,37 @@ void SnapshotUsageWidget::populateChildren(QTreeWidgetItem* item)
 	{
 		const NativeName* name;
 		const SnapshotEntry* entry;
+		NativePath path;
+		DisplayedAllocation allocation;
 	};
 	std::vector<ChildReference> children;
 	children.reserve(parentItem->entry->children.size());
 	for (auto child = parentItem->entry->children.begin(); child != parentItem->entry->children.end(); ++child)
-		children.push_back({&child.key(), &child.value()});
+	{
+		NativePath childPath = appendNativeName(parentItem->path, child.key());
+		DisplayedAllocation allocation = displayedAllocation(child.value());
+		const auto hardLinkPresentation = m_hardLinkPresentationByAlias.find(childPath);
+		if (hardLinkPresentation != m_hardLinkPresentationByAlias.end() && !hardLinkPresentation->second.accountingExact)
+			allocation = {};
+		children.push_back({&child.key(), &child.value(), std::move(childPath), allocation});
+	}
 	std::sort(children.begin(), children.end(), [](const ChildReference& left, const ChildReference& right) {
-		const std::optional<uint64_t> leftSize = displayedAllocatedSize(*left.entry);
-		const std::optional<uint64_t> rightSize = displayedAllocatedSize(*right.entry);
-		if (leftSize.has_value() != rightSize.has_value())
-			return leftSize.has_value();
-		if (leftSize && *leftSize != *rightSize)
-			return *leftSize > *rightSize;
+		const DisplayedAllocation& leftAllocation = left.allocation;
+		const DisplayedAllocation& rightAllocation = right.allocation;
+		if (leftAllocation.overflow != rightAllocation.overflow)
+			return leftAllocation.overflow;
+		if (leftAllocation.bytes.has_value() != rightAllocation.bytes.has_value())
+			return leftAllocation.bytes.has_value();
+		if (leftAllocation.bytes && *leftAllocation.bytes != *rightAllocation.bytes)
+			return *leftAllocation.bytes > *rightAllocation.bytes;
 		return *left.name < *right.name;
 	});
 
-	const std::optional<uint64_t> parentSize = displayedAllocatedSize(*parentItem->entry);
-	const std::optional<uint64_t> rootSize = displayedAllocatedSize(m_snapshot->root);
-	for (const ChildReference& child : children)
+	const std::optional<uint64_t> exactParentSize = exactDisplayedAllocatedSize(*parentItem->entry);
+	const std::optional<uint64_t> exactRootSize = exactDisplayedAllocatedSize(m_snapshot->root);
+	for (ChildReference& child : children)
 	{
-		NativePath childPath = appendNativeName(parentItem->path, *child.name);
-		auto* childItem = new SnapshotUsageTreeItem{*child.entry, std::move(childPath)};
+		auto* childItem = new SnapshotUsageTreeItem{*child.entry, std::move(child.path)};
 		childItem->setText(NameColumn, nativePathForDisplay(*child.name) + entryStateSuffix(*child.entry));
 		childItem->setChildIndicatorPolicy(child.entry->children.empty()
 			? QTreeWidgetItem::DontShowIndicator : QTreeWidgetItem::ShowIndicator);
@@ -356,10 +394,10 @@ void SnapshotUsageWidget::populateChildren(QTreeWidgetItem* item)
 		}
 		else
 		{
-			const std::optional<uint64_t> childSize = displayedAllocatedSize(*child.entry);
-			childItem->setText(AllocatedColumn, childSize ? formatByteCount(*childSize) : "Unknown");
-			childItem->setText(ParentPercentageColumn, formatPercentage(childSize, parentSize));
-			childItem->setText(RootPercentageColumn, formatPercentage(childSize, rootSize));
+			const std::optional<uint64_t> exactChildSize = exactDisplayedAllocatedSize(*child.entry);
+			childItem->setText(AllocatedColumn, formatDisplayedAllocation(child.allocation));
+			childItem->setText(ParentPercentageColumn, formatPercentage(exactChildSize, exactParentSize));
+			childItem->setText(RootPercentageColumn, formatPercentage(exactChildSize, exactRootSize));
 		}
 		setItemToolTip(*childItem, toolTip);
 		parentItem->addChild(childItem);

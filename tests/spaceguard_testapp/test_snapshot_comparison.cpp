@@ -135,6 +135,7 @@ TEST_CASE("Derived accounting groups hard links deterministically", "[snapshot][
 	CHECK(group.accountingExact);
 	CHECK(group.presentationPath == childPath(childPath(snapshot.rootPath, "a"), "z"));
 	CHECK(snapshot.root.derived.subtreeAllocatedSize == 100);
+	CHECK(snapshot.root.derived.knownSubtreeAllocatedSizeLowerBound == 100);
 	CHECK(snapshot.root.children.at(nativeName("a")).children.at(nativeName("z")).derived.localAllocatedSize == 100);
 	CHECK(snapshot.root.children.at(nativeName("b")).children.at(nativeName("a")).derived.localAllocatedSize == 0);
 }
@@ -148,6 +149,27 @@ TEST_CASE("Derived accounting bypasses hard-link grouping for one-link files", "
 	CHECK(snapshot.hardLinkGroups.empty());
 	CHECK(snapshot.root.children.at(nativeName("file")).derived.localAllocatedSize == 100);
 	CHECK(snapshot.root.derived.subtreeAllocatedSize == 100);
+	CHECK(snapshot.root.derived.knownSubtreeAllocatedSizeLowerBound == 100);
+}
+
+TEST_CASE("Derived accounting retains known allocation below incomplete subtrees", "[snapshot][accounting]")
+{
+	Snapshot snapshot = makeSnapshot();
+	SnapshotEntry partialDirectory = directory();
+	partialDirectory.children.try_emplace(nativeName("known"), regularFile(100));
+	partialDirectory.children.try_emplace(nativeName("incomplete"), directory(DirectoryTraversalState::enumeration_failed));
+	snapshot.root.children.try_emplace(nativeName("partial"), std::move(partialDirectory));
+	SnapshotEntry unknownFile;
+	unknownFile.attributes.kind = thin_io::entry_kind::regular_file;
+	snapshot.root.children.try_emplace(nativeName("unknown"), std::move(unknownFile));
+
+	snapshot.rebuildDerivedData();
+	CHECK_FALSE(snapshot.root.derived.subtreeAllocatedSize);
+	CHECK(snapshot.root.derived.knownSubtreeAllocatedSizeLowerBound == 100);
+	const SnapshotEntry& partial = snapshot.root.children.at(nativeName("partial"));
+	CHECK_FALSE(partial.derived.subtreeAllocatedSize);
+	CHECK(partial.derived.knownSubtreeAllocatedSizeLowerBound == 100);
+	CHECK_FALSE(snapshot.root.children.at(nativeName("unknown")).derived.knownSubtreeAllocatedSizeLowerBound);
 }
 
 TEST_CASE("Derived accounting identifies unavailable and inconsistent hard-link facts", "[snapshot][accounting]")
@@ -159,6 +181,7 @@ TEST_CASE("Derived accounting identifies unavailable and inconsistent hard-link 
 		snapshot.rebuildDerivedData();
 		CHECK_FALSE(snapshot.root.children.at(nativeName("file")).derived.localAllocatedSize);
 		CHECK_FALSE(snapshot.root.derived.subtreeAllocatedSize);
+		CHECK(snapshot.root.derived.knownSubtreeAllocatedSizeLowerBound == 0);
 	}
 
 	SECTION("Unobserved aliases are uncertain")
@@ -197,6 +220,7 @@ TEST_CASE("Derived accounting rejects allocated-size overflow", "[snapshot][acco
 	snapshot.rebuildDerivedData();
 	CHECK(snapshot.root.derived.allocationOverflow);
 	CHECK_FALSE(snapshot.root.derived.subtreeAllocatedSize);
+	CHECK_FALSE(snapshot.root.derived.knownSubtreeAllocatedSizeLowerBound);
 }
 
 TEST_CASE("Derived accounting excludes mount boundaries but includes link entries", "[snapshot][accounting]")

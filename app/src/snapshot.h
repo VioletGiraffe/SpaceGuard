@@ -56,6 +56,7 @@ struct SnapshotEntryDerivedData
 	bool allocationOverflow = false;
 	std::optional<uint64_t> localAllocatedSize;
 	std::optional<uint64_t> subtreeAllocatedSize;
+	std::optional<uint64_t> knownSubtreeAllocatedSizeLowerBound;
 };
 
 struct SnapshotEntry

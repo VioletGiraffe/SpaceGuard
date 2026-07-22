@@ -16,6 +16,7 @@
    </item>
    <item>
     <widget class="QLabel" name="snapshotQualificationLabel">
+     <property name="visible"><bool>false</bool></property>
      <property name="text"><string/></property>
      <property name="wordWrap"><bool>true</bool></property>
     </widget>

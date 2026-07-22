@@ -587,14 +587,14 @@ void MainWindow::scanCompleted(
 
 	const Snapshot& snapshot = std::get<Snapshot>(*result);
 	const std::shared_ptr<const Snapshot> completedSnapshot{result, &snapshot};
-	if (snapshot.diagnostics.empty())
-		m_ui->scanStatusLabel->setText("Scan complete: no issues.");
+	if (snapshot.root.derived.allocationOverflow)
+		m_ui->scanStatusLabel->setText("Scan complete; some allocated-size totals overflowed.");
+	else if (!snapshot.root.derived.subtreeAllocatedSize && snapshot.root.derived.knownSubtreeAllocatedSizeLowerBound)
+		m_ui->scanStatusLabel->setText("Scan complete; some totals are known lower bounds.");
+	else if (!snapshot.root.derived.subtreeAllocatedSize)
+		m_ui->scanStatusLabel->setText("Scan complete; some allocated-size data is unavailable.");
 	else
-	{
-		const auto issueCount = static_cast<qulonglong>(snapshot.diagnostics.size());
-		m_ui->scanStatusLabel->setText(QString{"Scan complete: %1 issue%2 - %3."}
-			.arg(issueCount).arg(issueCount == 1 ? "" : "s").arg(scanIssueSummary(snapshot.diagnostics)));
-	}
+		m_ui->scanStatusLabel->setText("Scan complete.");
 	m_ui->scanDurationLabel->setText("Scan time: " + elapsedTime);
 	if (purpose == ScanPurpose::create_baseline)
 	{

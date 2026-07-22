@@ -17,7 +17,7 @@ The product-specific code is currently small and lives in `app/src/`:
 - `mainwindow.{h,cpp,ui}` owns the create-baseline/find-growth/inspect-usage/cancel workflow, UI-thread publication
   draining, snapshot file dialogs, threshold-only recalculation, and the two top-level result views.
 - `snapshot_usage_widget.{h,cpp,ui}` owns lazy presentation of a completed snapshot's current allocated-space tree,
-  including exact/unknown totals, percentages, boundary states, hard-link accounting explanations, authoritative
+  including exact/lower-bound/unknown totals, percentages, boundary states, hard-link accounting explanations, authoritative
   snapshot-path search, and lazy expansion to a selected native path. It initially expands the root and materializes
   that one level; deeper directories remain lazy.
 - Snapshot files use the `.spaceguard` extension and a versioned, platform-marked `QDataStream`/`qCompress` format
@@ -83,6 +83,11 @@ filesystems remain deterministic without adding substitution machinery to the ap
   concurrency/equivalence tests and through `SnapshotScanRunner` in production.
 - Persist factual observations only; rebuild coverage, allocation totals, hard-link groups, and other derived state
   after scanning or loading.
+- Derived accounting keeps exact subtree allocation separate from a conservative known subtotal. Incomplete coverage
+  clears exactness but retains observed contributions for `>=` presentation; comparison continues to use exact totals
+  only. Percentages likewise require exact numerator and denominator values.
+- Access-denied and transient scan issues are routine on system volumes. Keep native diagnostics available in details,
+  but use lower-bound notation and tooltips instead of repeating warning labels on every affected usage-tree row.
 - Count ordinary one-link regular files directly. Build derived hard-link groups only for files reporting multiple links;
   comparison must still correlate one-to-many and many-to-one alias transitions through a surviving common path.
 - Store each snapshot entry's children in the separate-key/value `flat_map`. Scanning reserves and finalizes the complete
