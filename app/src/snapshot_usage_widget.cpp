@@ -68,11 +68,12 @@ QString formatDisplayedAllocation(const DisplayedAllocation& allocation)
 	return allocation.exact ? formatted : QString{QChar{0x2265}} + " " + formatted;
 }
 
-QString formatPercentage(const std::optional<uint64_t> numerator, const std::optional<uint64_t> denominator)
+QString formatPercentage(const DisplayedAllocation& numerator, const DisplayedAllocation& denominator)
 {
-	if (!numerator || !denominator || *denominator == 0)
+	if (!numerator.bytes || !denominator.bytes || *denominator.bytes == 0)
 		return "-";
-	return QString::number(static_cast<double>(*numerator) * 100.0 / static_cast<double>(*denominator), 'f', 1) + "%";
+	return QString::number(
+		static_cast<double>(*numerator.bytes) * 100.0 / static_cast<double>(*denominator.bytes), 'f', 1) + "%";
 }
 
 QString entryStateSuffix(const SnapshotEntry& entry)
@@ -148,8 +149,10 @@ SnapshotUsageWidget::SnapshotUsageWidget(QWidget* parent)
 	for (int column = AllocatedColumn; column <= RootPercentageColumn; ++column)
 		m_ui->usageTree->header()->setSectionResizeMode(column, QHeaderView::ResizeToContents);
 	m_ui->usageTree->headerItem()->setToolTip(ParentPercentageColumn,
-		"Share of the parent's complete allocated total. Visible children may not total 100% because a directory can occupy space itself.");
-	m_ui->usageTree->headerItem()->setToolTip(RootPercentageColumn, "Share of the complete scanned-root allocated total.");
+		"Share of the parent's allocated total. When accounting is incomplete, the percentage uses known allocation only. "
+		"Visible children may not total 100% because a directory can occupy space itself.");
+	m_ui->usageTree->headerItem()->setToolTip(RootPercentageColumn,
+		"Share of the scanned-root allocated total. When accounting is incomplete, the percentage uses known allocation only.");
 
 	connect(m_ui->usageTree, &QTreeWidget::itemExpanded, this, [this](QTreeWidgetItem* item) { populateChildren(item); });
 	connect(m_ui->usageTree, &QTreeWidget::itemActivated, this, [this](QTreeWidgetItem* item, int) {
@@ -194,7 +197,8 @@ void SnapshotUsageWidget::setSnapshot(std::shared_ptr<const Snapshot> snapshot)
 	}
 
 	const DisplayedAllocation rootAllocation = displayedAllocation(m_snapshot->root);
-	const std::optional<uint64_t> exactRootSize = exactDisplayedAllocatedSize(m_snapshot->root);
+	m_ui->usageTree->headerItem()->setText(ParentPercentageColumn, rootAllocation.exact ? "% parent" : "% known parent");
+	m_ui->usageTree->headerItem()->setText(RootPercentageColumn, rootAllocation.exact ? "% root" : "% known root");
 	const QString sizeText = formatDisplayedAllocation(rootAllocation);
 	m_ui->snapshotContextLabel->setText(QString{"%1    Scanned: %2    Allocated: %3"}
 		.arg(nativePathForDisplay(m_snapshot->rootPath)).arg(formatSnapshotTime(m_snapshot->scanCompletedAtUtc)).arg(sizeText));
@@ -204,7 +208,8 @@ void SnapshotUsageWidget::setSnapshot(std::shared_ptr<const Snapshot> snapshot)
 		qualification = "Some allocated-size totals overflowed and are marked Overflow.";
 	else if (!rootAllocation.exact)
 		qualification = QString{QChar{0x2265}}
-			+ " marks a known lower bound where some contents could not be measured; Unknown means no allocation is known.";
+			+ " marks a known lower bound where some contents could not be measured; Unknown means no allocation is known. "
+				"Percentage columns use those known values.";
 	m_ui->snapshotQualificationLabel->setText(qualification);
 	m_ui->snapshotQualificationLabel->setVisible(!qualification.isEmpty());
 
@@ -212,7 +217,7 @@ void SnapshotUsageWidget::setSnapshot(std::shared_ptr<const Snapshot> snapshot)
 	rootItem->setText(NameColumn, nativePathForDisplay(m_snapshot->rootPath));
 	rootItem->setText(AllocatedColumn, sizeText);
 	rootItem->setText(ParentPercentageColumn, "-");
-	rootItem->setText(RootPercentageColumn, exactRootSize && *exactRootSize != 0 ? "100.0%" : "-");
+	rootItem->setText(RootPercentageColumn, formatPercentage(rootAllocation, rootAllocation));
 	rootItem->setChildIndicatorPolicy(m_snapshot->root.children.empty()
 		? QTreeWidgetItem::DontShowIndicator : QTreeWidgetItem::ShowIndicator);
 	setItemToolTip(*rootItem, entryQualification(m_snapshot->root));
@@ -235,6 +240,8 @@ void SnapshotUsageWidget::clearSnapshot()
 	m_ui->snapshotContextLabel->setText("No current snapshot available.");
 	m_ui->snapshotQualificationLabel->clear();
 	m_ui->snapshotQualificationLabel->setVisible(false);
+	m_ui->usageTree->headerItem()->setText(ParentPercentageColumn, "% parent");
+	m_ui->usageTree->headerItem()->setText(RootPercentageColumn, "% root");
 }
 
 bool SnapshotUsageWidget::selectPath(const NativePath& path)
@@ -370,8 +377,8 @@ void SnapshotUsageWidget::populateChildren(QTreeWidgetItem* item)
 		return *left.name < *right.name;
 	});
 
-	const std::optional<uint64_t> exactParentSize = exactDisplayedAllocatedSize(*parentItem->entry);
-	const std::optional<uint64_t> exactRootSize = exactDisplayedAllocatedSize(m_snapshot->root);
+	const DisplayedAllocation parentAllocation = displayedAllocation(*parentItem->entry);
+	const DisplayedAllocation rootAllocation = displayedAllocation(m_snapshot->root);
 	for (ChildReference& child : children)
 	{
 		auto* childItem = new SnapshotUsageTreeItem{*child.entry, std::move(child.path)};
@@ -394,10 +401,9 @@ void SnapshotUsageWidget::populateChildren(QTreeWidgetItem* item)
 		}
 		else
 		{
-			const std::optional<uint64_t> exactChildSize = exactDisplayedAllocatedSize(*child.entry);
 			childItem->setText(AllocatedColumn, formatDisplayedAllocation(child.allocation));
-			childItem->setText(ParentPercentageColumn, formatPercentage(exactChildSize, exactParentSize));
-			childItem->setText(RootPercentageColumn, formatPercentage(exactChildSize, exactRootSize));
+			childItem->setText(ParentPercentageColumn, formatPercentage(child.allocation, parentAllocation));
+			childItem->setText(RootPercentageColumn, formatPercentage(child.allocation, rootAllocation));
 		}
 		setItemToolTip(*childItem, toolTip);
 		parentItem->addChild(childItem);

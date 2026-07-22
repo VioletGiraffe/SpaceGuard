@@ -85,7 +85,8 @@ filesystems remain deterministic without adding substitution machinery to the ap
   after scanning or loading.
 - Derived accounting keeps exact subtree allocation separate from a conservative known subtotal. Incomplete coverage
   clears exactness but retains observed contributions for `>=` presentation; comparison continues to use exact totals
-  only. Percentages likewise require exact numerator and denominator values.
+  only. The usage view calculates percentages from displayed exact/known values and qualifies the percentage columns as
+  `% known` when the root is incomplete; those values are shares of observed allocation, not estimates of unknown shares.
 - Access-denied and transient scan issues are routine on system volumes. Keep native diagnostics available in details,
   but use lower-bound notation and tooltips instead of repeating warning labels on every affected usage-tree row.
 - Count ordinary one-link regular files directly. Build derived hard-link groups only for files reporting multiple links;
