@@ -40,10 +40,11 @@ private:
 
 	void saveCreatedSnapshot(const Snapshot& snapshot);
 	void recalculateComparison(bool reportError = false);
-	void displayComparison(const SnapshotComparisonResult& comparison);
+	void displayComparison();
 	void clearComparisonDisplay();
 	void populateDiagnostics();
 	void populateCompletedScanDiagnostics(const Snapshot& snapshot);
+	void updateDetailsDisclosure();
 	void openTableItem(const QTableWidgetItem* item);
 
 	std::unique_ptr<Ui::MainWindow> m_ui;
@@ -57,4 +58,5 @@ private:
 	std::optional<ScanPurpose> m_activePurpose;
 	std::shared_ptr<const Snapshot> m_baselineSnapshot;
 	std::shared_ptr<const Snapshot> m_currentSnapshot;
+	std::optional<SnapshotComparisonResult> m_comparison;
 };

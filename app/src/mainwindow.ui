@@ -36,12 +36,12 @@
      <layout class="QHBoxLayout" name="actionLayout">
       <item>
        <widget class="QPushButton" name="createSnapshotButton">
-        <property name="text"><string>Create snapshot</string></property>
+        <property name="text"><string>Create baseline...</string></property>
        </widget>
       </item>
       <item>
        <widget class="QPushButton" name="compareSnapshotButton">
-        <property name="text"><string>Compare with snapshot</string></property>
+        <property name="text"><string>Find growth...</string></property>
        </widget>
       </item>
       <item>
@@ -55,17 +55,6 @@
         <property name="orientation"><enum>Qt::Orientation::Horizontal</enum></property>
         <property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property>
        </spacer>
-      </item>
-      <item>
-       <widget class="QLabel" name="thresholdLabel">
-        <property name="text"><string>Minimum increase:</string></property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QSpinBox" name="thresholdSpinBox">
-        <property name="suffix"><string notr="true"> MiB</string></property>
-        <property name="maximum"><number>999999999</number></property>
-       </widget>
       </item>
      </layout>
     </item>
@@ -104,22 +93,17 @@
      </layout>
     </item>
     <item>
-     <widget class="QGroupBox" name="summaryGroupBox">
-      <property name="title"><string>Comparison summary</string></property>
-      <layout class="QGridLayout" name="summaryLayout">
-       <item row="0" column="0"><widget class="QLabel" name="freeSpaceLabel"><property name="text"><string>Free space:</string></property></widget></item>
-       <item row="0" column="1"><widget class="QLabel" name="freeSpaceValueLabel"><property name="text"><string>Unavailable</string></property></widget></item>
-       <item row="0" column="2"><widget class="QLabel" name="availableSpaceLabel"><property name="text"><string>Available space:</string></property></widget></item>
-       <item row="0" column="3"><widget class="QLabel" name="availableSpaceValueLabel"><property name="text"><string>Unavailable</string></property></widget></item>
-       <item row="1" column="0"><widget class="QLabel" name="allocatedTreeLabel"><property name="text"><string>Accounted tree:</string></property></widget></item>
-       <item row="1" column="1"><widget class="QLabel" name="allocatedTreeValueLabel"><property name="text"><string>Unavailable</string></property></widget></item>
-       <item row="1" column="2"><widget class="QLabel" name="unexplainedLabel"><property name="text"><string>Unexplained consumption:</string></property></widget></item>
-       <item row="1" column="3"><widget class="QLabel" name="unexplainedValueLabel"><property name="text"><string>Unavailable</string></property></widget></item>
-       <item row="2" column="0"><widget class="QLabel" name="capacityLabel"><property name="text"><string>Capacity:</string></property></widget></item>
-       <item row="2" column="1"><widget class="QLabel" name="capacityValueLabel"><property name="text"><string>Unavailable</string></property></widget></item>
-       <item row="2" column="2"><widget class="QLabel" name="reconciliationLabel"><property name="text"><string>Reconciliation:</string></property></widget></item>
-       <item row="2" column="3"><widget class="QLabel" name="reconciliationValueLabel"><property name="text"><string>Incomplete</string></property></widget></item>
-      </layout>
+     <widget class="QLabel" name="comparisonContextLabel">
+      <property name="text"><string>No comparison available.</string></property>
+      <property name="textInteractionFlags"><set>Qt::TextInteractionFlag::TextSelectableByMouse</set></property>
+      <property name="wordWrap"><bool>true</bool></property>
+     </widget>
+    </item>
+    <item>
+     <widget class="QLabel" name="comparisonHeadlineLabel">
+      <property name="font"><font><bold>true</bold></font></property>
+      <property name="text"><string/></property>
+      <property name="wordWrap"><bool>true</bool></property>
      </widget>
     </item>
     <item>
@@ -129,50 +113,129 @@
      </widget>
     </item>
     <item>
-     <widget class="QTabWidget" name="resultTabs">
-      <property name="currentIndex"><number>0</number></property>
-      <widget class="QWidget" name="changesTab">
-       <attribute name="title"><string>Changes</string></attribute>
-       <layout class="QVBoxLayout" name="changesLayout">
-        <item>
-         <widget class="QTableWidget" name="changesTable">
-          <property name="editTriggers"><set>QAbstractItemView::EditTrigger::NoEditTriggers</set></property>
-          <property name="selectionBehavior"><enum>QAbstractItemView::SelectionBehavior::SelectRows</enum></property>
-          <column><property name="text"><string>Allocated increase</string></property></column>
-          <column><property name="text"><string>Path</string></property></column>
+     <widget class="QGroupBox" name="growthGroupBox">
+      <property name="title"><string>What grew</string></property>
+      <layout class="QVBoxLayout" name="growthLayout">
+       <item>
+        <layout class="QHBoxLayout" name="thresholdLayout">
+         <item>
+          <spacer name="thresholdSpacer">
+           <property name="orientation"><enum>Qt::Orientation::Horizontal</enum></property>
+           <property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property>
+          </spacer>
+         </item>
+         <item>
+          <widget class="QLabel" name="thresholdLabel">
+           <property name="text"><string>Show growth of at least:</string></property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QSpinBox" name="thresholdSpinBox">
+           <property name="suffix"><string notr="true"> MiB</string></property>
+           <property name="maximum"><number>999999999</number></property>
+          </widget>
+         </item>
+        </layout>
+       </item>
+       <item>
+        <widget class="QTableWidget" name="changesTable">
+         <property name="alternatingRowColors"><bool>true</bool></property>
+         <property name="editTriggers"><set>QAbstractItemView::EditTrigger::NoEditTriggers</set></property>
+         <property name="selectionBehavior"><enum>QAbstractItemView::SelectionBehavior::SelectRows</enum></property>
+         <column><property name="text"><string>Growth</string></property></column>
+         <column><property name="text"><string>Location</string></property></column>
+         <column><property name="text"><string>Type</string></property></column>
+         <column><property name="text"><string>Before</string></property></column>
+         <column><property name="text"><string>Now</string></property></column>
+        </widget>
+       </item>
+      </layout>
+     </widget>
+    </item>
+    <item>
+     <widget class="QGroupBox" name="accountingGroupBox">
+      <property name="title"><string>Overall accounting</string></property>
+      <layout class="QGridLayout" name="accountingLayout">
+       <item row="0" column="0">
+        <widget class="QLabel" name="wholeVolumeUsageLabel">
+         <property name="toolTip"><string>Derived from the change in total free space. Capacity changes are listed in Details.</string></property>
+         <property name="text"><string>Whole volume usage:</string></property>
+        </widget>
+       </item>
+       <item row="0" column="1"><widget class="QLabel" name="wholeVolumeUsageValueLabel"><property name="text"><string>Unavailable</string></property></widget></item>
+       <item row="1" column="0"><widget class="QLabel" name="scannedTreeUsageLabel"><property name="text"><string>Scanned tree usage:</string></property></widget></item>
+       <item row="1" column="1"><widget class="QLabel" name="scannedTreeUsageValueLabel"><property name="text"><string>Unavailable</string></property></widget></item>
+       <item row="2" column="0">
+        <widget class="QLabel" name="otherVolumeUsageLabel">
+         <property name="toolTip"><string>Difference between whole-volume usage and the scanned tree. This may include activity outside the selected root and filesystem-level effects.</string></property>
+         <property name="text"><string>Other volume changes:</string></property>
+        </widget>
+       </item>
+       <item row="2" column="1"><widget class="QLabel" name="otherVolumeUsageValueLabel"><property name="text"><string>Unavailable</string></property></widget></item>
+       <item row="0" column="2"><spacer name="accountingSpacer"><property name="orientation"><enum>Qt::Orientation::Horizontal</enum></property><property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property></spacer></item>
+      </layout>
+     </widget>
+    </item>
+    <item>
+     <widget class="QToolButton" name="detailsButton">
+      <property name="enabled"><bool>false</bool></property>
+      <property name="text"><string>Details</string></property>
+      <property name="checkable"><bool>true</bool></property>
+      <property name="arrowType"><enum>Qt::ArrowType::RightArrow</enum></property>
+      <property name="toolButtonStyle"><enum>Qt::ToolButtonStyle::ToolButtonTextBesideIcon</enum></property>
+     </widget>
+    </item>
+    <item>
+     <widget class="QWidget" name="detailsWidget">
+      <property name="visible"><bool>false</bool></property>
+      <layout class="QVBoxLayout" name="detailsLayout">
+       <property name="leftMargin"><number>0</number></property>
+       <property name="topMargin"><number>0</number></property>
+       <property name="rightMargin"><number>0</number></property>
+       <property name="bottomMargin"><number>0</number></property>
+       <item>
+        <widget class="QLabel" name="comparisonDetailsLabel">
+         <property name="text"><string/></property>
+         <property name="wordWrap"><bool>true</bool></property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QTabWidget" name="detailsTabs">
+         <property name="currentIndex"><number>0</number></property>
+         <widget class="QWidget" name="excludedTab">
+          <attribute name="title"><string>Excluded regions</string></attribute>
+          <layout class="QVBoxLayout" name="excludedLayout">
+           <item>
+            <widget class="QTableWidget" name="excludedTable">
+             <property name="alternatingRowColors"><bool>true</bool></property>
+             <property name="editTriggers"><set>QAbstractItemView::EditTrigger::NoEditTriggers</set></property>
+             <property name="selectionBehavior"><enum>QAbstractItemView::SelectionBehavior::SelectRows</enum></property>
+             <column><property name="text"><string>Path</string></property></column>
+             <column><property name="text"><string>Reason</string></property></column>
+            </widget>
+           </item>
+          </layout>
          </widget>
-        </item>
-       </layout>
-      </widget>
-      <widget class="QWidget" name="excludedTab">
-       <attribute name="title"><string>Excluded regions</string></attribute>
-       <layout class="QVBoxLayout" name="excludedLayout">
-        <item>
-         <widget class="QTableWidget" name="excludedTable">
-          <property name="editTriggers"><set>QAbstractItemView::EditTrigger::NoEditTriggers</set></property>
-          <property name="selectionBehavior"><enum>QAbstractItemView::SelectionBehavior::SelectRows</enum></property>
-          <column><property name="text"><string>Path</string></property></column>
-          <column><property name="text"><string>Reason</string></property></column>
+         <widget class="QWidget" name="diagnosticsTab">
+          <attribute name="title"><string>Scan issues</string></attribute>
+          <layout class="QVBoxLayout" name="diagnosticsLayout">
+           <item>
+            <widget class="QTableWidget" name="diagnosticsTable">
+             <property name="alternatingRowColors"><bool>true</bool></property>
+             <property name="editTriggers"><set>QAbstractItemView::EditTrigger::NoEditTriggers</set></property>
+             <property name="selectionBehavior"><enum>QAbstractItemView::SelectionBehavior::SelectRows</enum></property>
+             <column><property name="text"><string>Snapshot</string></property></column>
+             <column><property name="text"><string>Operation</string></property></column>
+             <column><property name="text"><string>Native code</string></property></column>
+             <column><property name="text"><string>Description</string></property></column>
+             <column><property name="text"><string>Path</string></property></column>
+            </widget>
+           </item>
+          </layout>
          </widget>
-        </item>
-       </layout>
-      </widget>
-      <widget class="QWidget" name="diagnosticsTab">
-       <attribute name="title"><string>Scan issues</string></attribute>
-       <layout class="QVBoxLayout" name="diagnosticsLayout">
-        <item>
-         <widget class="QTableWidget" name="diagnosticsTable">
-          <property name="editTriggers"><set>QAbstractItemView::EditTrigger::NoEditTriggers</set></property>
-          <property name="selectionBehavior"><enum>QAbstractItemView::SelectionBehavior::SelectRows</enum></property>
-          <column><property name="text"><string>Snapshot</string></property></column>
-          <column><property name="text"><string>Operation</string></property></column>
-          <column><property name="text"><string>Native code</string></property></column>
-          <column><property name="text"><string>Description</string></property></column>
-          <column><property name="text"><string>Path</string></property></column>
-         </widget>
-        </item>
-       </layout>
-      </widget>
+        </widget>
+       </item>
+      </layout>
      </widget>
     </item>
    </layout>

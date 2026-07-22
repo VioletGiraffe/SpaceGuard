@@ -12,6 +12,7 @@
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QHeaderView>
+#include <QLocale>
 #include <QMessageBox>
 #include <QProcess>
 #include <QTableWidget>
@@ -27,6 +28,7 @@ namespace {
 
 constexpr auto SnapshotExtension = ".spaceguard";
 constexpr uint64_t BytesPerMiB = 1024 * 1024;
+constexpr int ByteCountRole = Qt::UserRole + 1;
 
 QString formatBytes(const uint64_t bytes)
 {
@@ -44,6 +46,13 @@ QString formatBytes(const uint64_t bytes)
 	if (bytes < TiB)
 		return QString::number(static_cast<double>(bytes) / GiB, 'f', 1) + " GiB";
 	return QString::number(static_cast<double>(bytes) / TiB, 'f', 1) + " TiB";
+}
+
+QTableWidgetItem* createByteCountItem(const uint64_t bytes)
+{
+	auto* item = new QTableWidgetItem{formatBytes(bytes)};
+	item->setData(ByteCountRole, static_cast<qulonglong>(bytes));
+	return item;
 }
 
 QString formatElapsedTime(const qint64 elapsedMilliseconds)
@@ -76,6 +85,123 @@ QString formatChange(const std::optional<MagnitudeChange>& change)
 		return "-" + formatBytes(change->magnitude);
 	}
 	return "Unavailable";
+}
+
+std::optional<MagnitudeChange> invertedChange(std::optional<MagnitudeChange> change)
+{
+	if (!change)
+		return {};
+	if (change->direction == ChangeDirection::increase)
+		change->direction = ChangeDirection::decrease;
+	else if (change->direction == ChangeDirection::decrease)
+		change->direction = ChangeDirection::increase;
+	return change;
+}
+
+QString formatUsageChange(const std::optional<MagnitudeChange>& change)
+{
+	if (!change)
+		return "Unavailable";
+
+	switch (change->direction)
+	{
+	case ChangeDirection::unchanged: return "No change";
+	case ChangeDirection::increase: return formatBytes(change->magnitude) + " more used";
+	case ChangeDirection::decrease: return formatBytes(change->magnitude) + " less used";
+	}
+	return "Unavailable";
+}
+
+QString formatSnapshotTime(const QDateTime& utcTime)
+{
+	return QLocale{}.toString(utcTime.toLocalTime(), QLocale::ShortFormat);
+}
+
+QString comparisonContext(const Snapshot& baseline, const Snapshot& current)
+{
+	return QString{"%1    Baseline: %2 %3 Current: %4"}
+		.arg(nativePathForDisplay(current.rootPath))
+		.arg(formatSnapshotTime(baseline.scanCompletedAtUtc))
+		.arg(QChar{0x2192})
+		.arg(formatSnapshotTime(current.scanCompletedAtUtc));
+}
+
+QString comparisonHeadline(const SnapshotComparisonResult& comparison, const uint64_t threshold)
+{
+	const auto locationCount = static_cast<qulonglong>(comparison.changes.size());
+	const QString locationText = QString{"%1 location%2"}.arg(locationCount).arg(locationCount == 1 ? "" : "s");
+	const std::optional<MagnitudeChange>& treeChange = comparison.summary.allocatedTreeChange;
+	if (!comparison.changes.empty())
+	{
+		if (!treeChange)
+			return "Growth found in " + locationText + ", but the complete net change could not be calculated.";
+
+		switch (treeChange->direction)
+		{
+		case ChangeDirection::increase:
+			return "Growth found in " + locationText + ". The scanned tree uses " + formatBytes(treeChange->magnitude) + " more overall.";
+		case ChangeDirection::decrease:
+			return "Growth found in " + locationText + ". The scanned tree uses " + formatBytes(treeChange->magnitude)
+				+ " less overall because deletions and shrinkage outweighed this growth.";
+		case ChangeDirection::unchanged:
+			return "Growth found in " + locationText + ", offset by equal deletions or shrinkage elsewhere in the scanned tree.";
+		}
+	}
+
+	const QString thresholdText = threshold == 0 ? "positive growth" : "growth of at least " + formatBytes(threshold);
+	if (!treeChange)
+		return "No comparable " + thresholdText + " was found. Complete net accounting is unavailable.";
+
+	switch (treeChange->direction)
+	{
+	case ChangeDirection::increase:
+		if (threshold == 0)
+			return "The scanned tree uses " + formatBytes(treeChange->magnitude) + " more, but no comparable positive-growth location was available.";
+		return "The scanned tree uses " + formatBytes(treeChange->magnitude) + " more, but no location reached the "
+			+ formatBytes(threshold) + " display threshold.";
+	case ChangeDirection::decrease:
+		return "No " + thresholdText + " was found. The scanned tree uses " + formatBytes(treeChange->magnitude) + " less overall.";
+	case ChangeDirection::unchanged:
+		return "No " + thresholdText + " was found, and total scanned-tree usage is unchanged.";
+	}
+	return {};
+}
+
+QString comparisonChangeType(const ComparisonChange& change)
+{
+	if (change.currentEntryKind == thin_io::entry_kind::directory)
+		return change.baselineEntryExists ? "Folder total" : "New folder total";
+	return change.baselineEntryExists ? "Expanded" : "New";
+}
+
+QString comparisonDetails(const SnapshotComparisonResult& comparison)
+{
+	const ComparisonSummary& summary = comparison.summary;
+	QStringList lines{
+		"Available-space change: " + formatChange(summary.availableSpaceChange),
+		"Capacity change: " + formatChange(summary.capacityChange)
+	};
+	switch (summary.reconciliation)
+	{
+	case ReconciliationState::exact: lines.push_back("Reconciliation: Exact."); break;
+	case ReconciliationState::incomplete:
+		lines.push_back("Reconciliation: Incomplete; complete whole-volume versus scanned-tree accounting is unavailable.");
+		break;
+	case ReconciliationState::overflow: lines.push_back("Reconciliation: Arithmetic overflow; the remainder is unavailable."); break;
+	}
+
+	for (const SnapshotComparisonWarning warning : comparison.warnings)
+	{
+		if (warning == SnapshotComparisonWarning::root_identity_unavailable)
+			lines.push_back("The root identity was unavailable, so root replacement could not be verified.");
+		else
+			lines.push_back("The filesystem identity was unavailable, so filesystem replacement could not be verified.");
+	}
+	if (summary.baselineScanFreeSpaceChange && summary.baselineScanFreeSpaceChange->direction != ChangeDirection::unchanged)
+		lines.push_back("Free space changed by " + formatChange(summary.baselineScanFreeSpaceChange) + " while the baseline scan was running.");
+	if (summary.currentScanFreeSpaceChange && summary.currentScanFreeSpaceChange->direction != ChangeDirection::unchanged)
+		lines.push_back("Free space changed by " + formatChange(summary.currentScanFreeSpaceChange) + " while the current scan was running.");
+	return lines.join('\n');
 }
 
 QString saveErrorDescription(const SnapshotSaveError& error)
@@ -262,6 +388,10 @@ MainWindow::MainWindow(QWidget* parent)
 	connect(m_ui->compareSnapshotButton, &QAbstractButton::clicked, this, [this] { compareWithSnapshot(); });
 	connect(m_ui->cancelScanButton, &QAbstractButton::clicked, this, [this] { cancelScan(); });
 	connect(m_ui->thresholdSpinBox, &QSpinBox::valueChanged, this, [this](int) { recalculateComparison(); });
+	connect(m_ui->detailsButton, &QAbstractButton::toggled, this, [this](const bool expanded) {
+		m_ui->detailsWidget->setVisible(expanded);
+		m_ui->detailsButton->setArrowType(expanded ? Qt::DownArrow : Qt::RightArrow);
+	});
 	connect(&m_publicationTimer, &QTimer::timeout, this, [this] { m_publicationQueue.exec(); });
 	connect(&m_scanElapsedUpdateTimer, &QTimer::timeout, this, [this] {
 		assert(m_scanElapsedTimer.isValid());
@@ -276,7 +406,11 @@ MainWindow::MainWindow(QWidget* parent)
 		table->horizontalHeader()->setStretchLastSection(true);
 		table->verticalHeader()->setVisible(false);
 	}
+	m_ui->changesTable->horizontalHeader()->setStretchLastSection(false);
 	m_ui->changesTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
+	m_ui->changesTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
+	for (int column = 2; column < m_ui->changesTable->columnCount(); ++column)
+		m_ui->changesTable->horizontalHeader()->setSectionResizeMode(column, QHeaderView::ResizeToContents);
 	m_ui->excludedTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
 	m_ui->diagnosticsTable->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
 	m_ui->diagnosticsTable->horizontalHeader()->setSectionResizeMode(4, QHeaderView::Stretch);
@@ -367,7 +501,7 @@ void MainWindow::beginScan(const ScanPurpose purpose, const NativePath& rootPath
 		m_activeGeneration = *generation;
 		m_scanElapsedTimer.start();
 		m_scanElapsedUpdateTimer.start();
-		m_ui->scanStatusLabel->setText(purpose == ScanPurpose::create_snapshot ? "Creating snapshot..." : "Scanning current state...");
+		m_ui->scanStatusLabel->setText(purpose == ScanPurpose::create_snapshot ? "Creating baseline..." : "Scanning current state...");
 		m_ui->scanCountsLabel->clear();
 		m_ui->scanDurationLabel->setText("Elapsed: <1 s");
 		setScanActive(true);
@@ -470,9 +604,9 @@ void MainWindow::saveCreatedSnapshot(const Snapshot& snapshot)
 		qualifications.push_back("incomplete allocated-size accounting");
 	if (!qualifications.empty())
 	{
-		const QString message = "The completed snapshot is incomplete:\n\n- " + qualifications.join("\n- ")
-			+ "\n\nSome contents or allocated sizes may be missing.\n\nSave this snapshot anyway?";
-		if (QMessageBox::warning(this, "Incomplete snapshot", message, QMessageBox::Yes | QMessageBox::No, QMessageBox::No) != QMessageBox::Yes)
+		const QString message = "The completed baseline is incomplete:\n\n- " + qualifications.join("\n- ")
+			+ "\n\nSome contents or allocated sizes may be missing.\n\nSave this baseline anyway?";
+		if (QMessageBox::warning(this, "Incomplete baseline", message, QMessageBox::Yes | QMessageBox::No, QMessageBox::No) != QMessageBox::Yes)
 			return;
 	}
 
@@ -480,7 +614,7 @@ void MainWindow::saveCreatedSnapshot(const Snapshot& snapshot)
 	const QString lastUsedPath = settings.value(Settings::SavePath, QDir::currentPath()).toString();
 	const QString defaultName = QDateTime::currentDateTime().toString("yyyy-MM-dd_HH-mm") + SnapshotExtension;
 	QString destination = QFileDialog::getSaveFileName(
-		this, "Save snapshot", QDir{lastUsedPath}.filePath(defaultName), "SpaceGuard snapshots (*.spaceguard)");
+		this, "Save baseline", QDir{lastUsedPath}.filePath(defaultName), "SpaceGuard snapshots (*.spaceguard)");
 	if (destination.isEmpty())
 		return;
 	if (!destination.endsWith(SnapshotExtension, Qt::CaseInsensitive))
@@ -490,10 +624,10 @@ void MainWindow::saveCreatedSnapshot(const Snapshot& snapshot)
 	const auto saved = snapshot.save(destination);
 	if (!saved)
 	{
-		QMessageBox::critical(this, "Cannot save snapshot", saveErrorDescription(saved.error()));
+		QMessageBox::critical(this, "Cannot save baseline", saveErrorDescription(saved.error()));
 		return;
 	}
-	m_ui->scanStatusLabel->setText("Snapshot saved to " + QDir::toNativeSeparators(destination));
+	m_ui->scanStatusLabel->setText("Baseline saved to " + QDir::toNativeSeparators(destination));
 }
 
 void MainWindow::recalculateComparison(const bool reportError)
@@ -513,23 +647,24 @@ void MainWindow::recalculateComparison(const bool reportError)
 			QMessageBox::critical(this, "Snapshots cannot be compared", error);
 		return;
 	}
-	displayComparison(*comparison);
+	m_comparison = std::move(*comparison);
+	displayComparison();
 }
 
-void MainWindow::displayComparison(const SnapshotComparisonResult& comparison)
+void MainWindow::displayComparison()
 {
+	assert(m_baselineSnapshot);
+	assert(m_currentSnapshot);
+	assert(m_comparison);
+	const SnapshotComparisonResult& comparison = *m_comparison;
 	const auto& summary = comparison.summary;
-	m_ui->freeSpaceValueLabel->setText(formatChange(summary.freeSpaceChange));
-	m_ui->availableSpaceValueLabel->setText(formatChange(summary.availableSpaceChange));
-	m_ui->allocatedTreeValueLabel->setText(formatChange(summary.allocatedTreeChange));
-	m_ui->unexplainedValueLabel->setText(formatChange(summary.unexplainedConsumptionChange));
-	m_ui->capacityValueLabel->setText(formatChange(summary.capacityChange));
-	switch (summary.reconciliation)
-	{
-	case ReconciliationState::exact: m_ui->reconciliationValueLabel->setText("Exact"); break;
-	case ReconciliationState::incomplete: m_ui->reconciliationValueLabel->setText("Incomplete"); break;
-	case ReconciliationState::overflow: m_ui->reconciliationValueLabel->setText("Overflow"); break;
-	}
+	const uint64_t threshold = static_cast<uint64_t>(m_ui->thresholdSpinBox->value()) * BytesPerMiB;
+	m_ui->comparisonContextLabel->setText(comparisonContext(*m_baselineSnapshot, *m_currentSnapshot));
+	m_ui->comparisonHeadlineLabel->setText(comparisonHeadline(comparison, threshold));
+	m_ui->wholeVolumeUsageValueLabel->setText(formatUsageChange(invertedChange(summary.freeSpaceChange)));
+	m_ui->scannedTreeUsageValueLabel->setText(formatUsageChange(summary.allocatedTreeChange));
+	m_ui->otherVolumeUsageValueLabel->setText(formatUsageChange(summary.unexplainedConsumptionChange));
+	m_ui->comparisonDetailsLabel->setText(comparisonDetails(comparison));
 
 	std::vector<ComparisonChange> changes = comparison.changes;
 	std::sort(changes.begin(), changes.end(), [](const auto& left, const auto& right) {
@@ -540,8 +675,14 @@ void MainWindow::displayComparison(const SnapshotComparisonResult& comparison)
 	for (int row = 0; row < static_cast<int>(changes.size()); ++row)
 	{
 		const auto& change = changes[static_cast<size_t>(row)];
-		m_ui->changesTable->setItem(row, 0, new QTableWidgetItem{formatBytes(change.allocatedIncrease)});
+		m_ui->changesTable->setItem(row, 0, createByteCountItem(change.allocatedIncrease));
 		m_ui->changesTable->setItem(row, 1, new QTableWidgetItem{nativePathForDisplay(change.path)});
+		auto* typeItem = new QTableWidgetItem{comparisonChangeType(change)};
+		if (change.currentEntryKind == thin_io::entry_kind::directory)
+			typeItem->setToolTip("Net allocated-size change for this folder's comparable subtree.");
+		m_ui->changesTable->setItem(row, 2, typeItem);
+		m_ui->changesTable->setItem(row, 3, createByteCountItem(change.baselineSubtreeAllocatedSize));
+		m_ui->changesTable->setItem(row, 4, createByteCountItem(change.currentSubtreeAllocatedSize));
 		setRowPath(*m_ui->changesTable, row, change.path);
 	}
 
@@ -555,44 +696,33 @@ void MainWindow::displayComparison(const SnapshotComparisonResult& comparison)
 	}
 
 	populateDiagnostics();
-	m_ui->resultTabs->setTabText(0, QString{"Changes (%1)"}.arg(static_cast<qulonglong>(changes.size())));
-	m_ui->resultTabs->setTabText(1, QString{"Excluded regions (%1)"}.arg(static_cast<qulonglong>(comparison.excludedRegions.size())));
-	m_ui->resultTabs->setTabText(2, QString{"Scan issues (%1)"}.arg(m_ui->diagnosticsTable->rowCount()));
-
-	QStringList notices;
-	for (const SnapshotComparisonWarning warning : comparison.warnings)
+	if (comparison.excludedRegions.empty())
+		m_ui->comparisonNoticeLabel->clear();
+	else
 	{
-		if (warning == SnapshotComparisonWarning::root_identity_unavailable)
-			notices.push_back("The root identity was unavailable, so root replacement could not be verified.");
-		else
-			notices.push_back("The filesystem identity was unavailable, so filesystem replacement could not be verified.");
+		const auto excludedCount = static_cast<qulonglong>(comparison.excludedRegions.size());
+		m_ui->comparisonNoticeLabel->setText(QString{"%1 location%2 could not be compared because scan coverage or allocated-size accounting was uncertain. Known growth elsewhere is still shown."}
+			.arg(excludedCount).arg(excludedCount == 1 ? "" : "s"));
 	}
-	if (summary.baselineScanFreeSpaceChange && summary.baselineScanFreeSpaceChange->direction != ChangeDirection::unchanged)
-		notices.push_back("Free space changed by " + formatChange(summary.baselineScanFreeSpaceChange) + " while the baseline scan was running.");
-	if (summary.currentScanFreeSpaceChange && summary.currentScanFreeSpaceChange->direction != ChangeDirection::unchanged)
-		notices.push_back("Free space changed by " + formatChange(summary.currentScanFreeSpaceChange) + " while the current scan was running.");
-	if (!comparison.excludedRegions.empty())
-		notices.push_back(QString{"%1 region(s) were excluded because their scan coverage or accounting was uncertain."}
-			.arg(static_cast<qulonglong>(comparison.excludedRegions.size())));
-	const int diagnosticCount = m_ui->diagnosticsTable->rowCount();
-	if (diagnosticCount != 0)
-		notices.push_back(QString{"%1 scan issue(s) are listed in the details tab."}.arg(diagnosticCount));
-	m_ui->comparisonNoticeLabel->setText(notices.join(" "));
 }
 
 void MainWindow::clearComparisonDisplay()
 {
-	for (QLabel* label : {m_ui->freeSpaceValueLabel, m_ui->availableSpaceValueLabel, m_ui->allocatedTreeValueLabel,
-		m_ui->unexplainedValueLabel, m_ui->capacityValueLabel})
+	m_comparison.reset();
+	m_ui->comparisonContextLabel->setText("No comparison available.");
+	m_ui->comparisonHeadlineLabel->clear();
+	for (QLabel* label : {m_ui->wholeVolumeUsageValueLabel, m_ui->scannedTreeUsageValueLabel, m_ui->otherVolumeUsageValueLabel})
 		label->setText("Unavailable");
-	m_ui->reconciliationValueLabel->setText("Incomplete");
 	m_ui->comparisonNoticeLabel->clear();
+	m_ui->comparisonDetailsLabel->clear();
 	m_ui->changesTable->setRowCount(0);
 	m_ui->excludedTable->setRowCount(0);
 	m_ui->diagnosticsTable->setRowCount(0);
-	m_ui->resultTabs->setTabText(0, "Changes");
-	m_ui->resultTabs->setTabText(1, "Excluded regions");
-	m_ui->resultTabs->setTabText(2, "Scan issues");
+	m_ui->detailsTabs->setTabText(0, "Excluded regions");
+	m_ui->detailsTabs->setTabText(1, "Scan issues");
+	m_ui->detailsButton->setChecked(false);
+	m_ui->detailsButton->setEnabled(false);
+	m_ui->detailsButton->setText("Details");
 	m_ui->thresholdSpinBox->setEnabled(false);
 }
 
@@ -603,16 +733,39 @@ void MainWindow::populateDiagnostics()
 		appendSnapshotDiagnostics(*m_ui->diagnosticsTable, "Baseline", *m_baselineSnapshot);
 	if (m_currentSnapshot)
 		appendSnapshotDiagnostics(*m_ui->diagnosticsTable, "Current scan", *m_currentSnapshot);
-	m_ui->resultTabs->setTabText(2, QString{"Scan issues (%1)"}.arg(m_ui->diagnosticsTable->rowCount()));
+	updateDetailsDisclosure();
 }
 
 void MainWindow::populateCompletedScanDiagnostics(const Snapshot& snapshot)
 {
 	m_ui->diagnosticsTable->setRowCount(0);
 	appendSnapshotDiagnostics(*m_ui->diagnosticsTable, "Current scan", snapshot);
-	m_ui->resultTabs->setTabText(2, QString{"Scan issues (%1)"}.arg(m_ui->diagnosticsTable->rowCount()));
+	updateDetailsDisclosure();
 	if (!snapshot.diagnostics.empty())
-		m_ui->resultTabs->setCurrentIndex(2);
+	{
+		m_ui->detailsTabs->setCurrentIndex(1);
+		m_ui->detailsButton->setChecked(true);
+	}
+}
+
+void MainWindow::updateDetailsDisclosure()
+{
+	const size_t excludedCount = m_comparison ? m_comparison->excludedRegions.size() : 0;
+	const int diagnosticCount = m_ui->diagnosticsTable->rowCount();
+	m_ui->detailsTabs->setTabText(0, QString{"Excluded regions (%1)"}.arg(static_cast<qulonglong>(excludedCount)));
+	m_ui->detailsTabs->setTabText(1, QString{"Scan issues (%1)"}.arg(diagnosticCount));
+
+	QStringList counts;
+	if (excludedCount != 0)
+		counts.push_back(QString{"%1 excluded region%2"}.arg(static_cast<qulonglong>(excludedCount)).arg(excludedCount == 1 ? "" : "s"));
+	if (diagnosticCount != 0)
+		counts.push_back(QString{"%1 scan issue%2"}.arg(diagnosticCount).arg(diagnosticCount == 1 ? "" : "s"));
+	m_ui->detailsButton->setText(counts.empty() ? "Details" : "Details (" + counts.join(", ") + ")");
+
+	const bool detailsAvailable = m_comparison.has_value() || diagnosticCount != 0;
+	m_ui->detailsButton->setEnabled(detailsAvailable);
+	if (!detailsAvailable)
+		m_ui->detailsButton->setChecked(false);
 }
 
 void MainWindow::openTableItem(const QTableWidgetItem* item)
