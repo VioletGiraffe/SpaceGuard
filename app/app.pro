@@ -7,12 +7,7 @@ TARGET   = SpaceGuard
 
 QT = core gui widgets
 
-CONFIG += strict_c++ c++2b
-
-mac* | linux* | freebsd {
-	CONFIG(release, debug|release):CONFIG *= Release optimize_full
-	CONFIG(debug, debug|release):CONFIG *= Debug
-}
+include($${PWD}/../global.pri)
 
 Release:OUTPUT_DIR=release/
 Debug:OUTPUT_DIR=debug/
