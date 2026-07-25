@@ -8,12 +8,14 @@
 #include "filesystem_error.hpp"
 #include "settings/csettings.h"
 
+#include <QAction>
 #include <QDateTime>
 #include <QDesktopServices>
 #include <QDir>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QHeaderView>
+#include <QMenu>
 #include <QMessageBox>
 #include <QProcess>
 #include <QTableWidget>
@@ -405,9 +407,10 @@ MainWindow::MainWindow(QWidget* parent)
 	connect(m_ui->changesTable, &QTableWidget::itemActivated, this, [this](QTableWidgetItem* item) { revealTableItemInFileManager(item); });
 	connect(m_ui->excludedTable, &QTableWidget::itemActivated, this, [this](QTableWidgetItem* item) { revealTableItemInFileManager(item); });
 	connect(m_ui->diagnosticsTable, &QTableWidget::itemActivated, this, [this](QTableWidgetItem* item) { revealTableItemInFileManager(item); });
-	connect(m_ui->changesTable, &QTableWidget::itemSelectionChanged, this, [this] { updateGrowthActions(); });
-	connect(m_ui->showInUsageButton, &QAbstractButton::clicked, this, [this] { showSelectedGrowthInCurrentUsage(); });
-	connect(m_ui->revealGrowthButton, &QAbstractButton::clicked, this, [this] { revealSelectedGrowthInFileManager(); });
+	m_ui->changesTable->setContextMenuPolicy(Qt::CustomContextMenu);
+	connect(m_ui->changesTable, &QWidget::customContextMenuRequested, this, [this](const QPoint& position) {
+		showGrowthContextMenu(position);
+	});
 	connect(m_ui->snapshotUsageWidget, &SnapshotUsageWidget::pathActivated, this, [this](const NativePath& path) { revealPath(path); });
 
 	for (QTableWidget* table : {m_ui->changesTable, m_ui->excludedTable, m_ui->diagnosticsTable})
@@ -432,7 +435,6 @@ MainWindow::MainWindow(QWidget* parent)
 	m_ui->thresholdSpinBox->setEnabled(false);
 	m_ui->resultViewTabs->setTabEnabled(GrowthViewIndex, false);
 	m_ui->resultViewTabs->setTabEnabled(UsageViewIndex, false);
-	m_ui->growthActionsWidget->setVisible(false);
 	m_scanElapsedUpdateTimer.setInterval(1000);
 	m_publicationTimer.start(33);
 }
@@ -637,7 +639,6 @@ void MainWindow::clearCurrentSnapshot()
 	m_ui->snapshotUsageWidget->clearSnapshot();
 	m_currentSnapshot.reset();
 	m_ui->resultViewTabs->setTabEnabled(UsageViewIndex, false);
-	updateGrowthActions();
 }
 
 void MainWindow::adoptCurrentSnapshot(std::shared_ptr<const Snapshot> snapshot)
@@ -646,7 +647,6 @@ void MainWindow::adoptCurrentSnapshot(std::shared_ptr<const Snapshot> snapshot)
 	m_currentSnapshot = std::move(snapshot);
 	m_ui->snapshotUsageWidget->setSnapshot(m_currentSnapshot);
 	m_ui->resultViewTabs->setTabEnabled(UsageViewIndex, true);
-	updateGrowthActions();
 }
 
 void MainWindow::saveCreatedSnapshot(const Snapshot& snapshot)
@@ -754,7 +754,6 @@ void MainWindow::displayComparison()
 	m_ui->changesTable->sortItems(sortColumn < 0 ? 0 : sortColumn, sortOrder);
 	const bool hasChanges = !changes.empty();
 	m_ui->changesTable->setVisible(hasChanges);
-	m_ui->growthActionsWidget->setVisible(hasChanges);
 	m_ui->changesEmptyLabel->setVisible(!hasChanges);
 	if (!hasChanges)
 	{
@@ -765,8 +764,6 @@ void MainWindow::displayComparison()
 		else
 			m_ui->changesEmptyLabel->setText("No positive growth was found.");
 	}
-	updateGrowthActions();
-
 	m_ui->excludedTable->setRowCount(static_cast<int>(comparison.excludedRegions.size()));
 	for (int row = 0; row < static_cast<int>(comparison.excludedRegions.size()); ++row)
 	{
@@ -800,8 +797,6 @@ void MainWindow::clearComparisonDisplay()
 	m_ui->changesTable->setRowCount(0);
 	m_ui->changesTable->setVisible(true);
 	m_ui->changesEmptyLabel->setVisible(false);
-	m_ui->growthActionsWidget->setVisible(false);
-	updateGrowthActions();
 	m_ui->excludedTable->setRowCount(0);
 	m_ui->diagnosticsTable->setRowCount(0);
 	m_ui->detailsTabs->setTabText(0, "Excluded regions");
@@ -854,32 +849,34 @@ void MainWindow::updateDetailsDisclosure()
 		m_ui->detailsButton->setChecked(false);
 }
 
-void MainWindow::updateGrowthActions()
+void MainWindow::showGrowthContextMenu(const QPoint& position)
 {
-	const QTableWidgetItem* selectedItem = m_ui->changesTable->currentItem();
-	const bool hasSelectedPath = selectedItem && !m_ui->changesTable->selectedItems().isEmpty()
-		&& selectedItem->data(Qt::UserRole).isValid();
-	m_ui->showInUsageButton->setEnabled(hasSelectedPath && m_ui->resultViewTabs->isTabEnabled(UsageViewIndex));
-	m_ui->revealGrowthButton->setEnabled(hasSelectedPath);
-}
-
-void MainWindow::showSelectedGrowthInCurrentUsage()
-{
+	if (QTableWidgetItem* clickedItem = m_ui->changesTable->itemAt(position))
+		m_ui->changesTable->setCurrentItem(clickedItem);
 	const QTableWidgetItem* selectedItem = m_ui->changesTable->currentItem();
 	if (!selectedItem || !selectedItem->data(Qt::UserRole).isValid())
 		return;
 	const NativePath path = storedNativePath(*selectedItem);
+
+	QMenu menu{m_ui->changesTable};
+	QAction* showInUsageAction = menu.addAction("Show in current space usage");
+	showInUsageAction->setEnabled(m_ui->resultViewTabs->isTabEnabled(UsageViewIndex));
+	QAction* revealAction = menu.addAction("Reveal in file manager");
+	const QAction* selectedAction = menu.exec(m_ui->changesTable->viewport()->mapToGlobal(position));
+	if (selectedAction == showInUsageAction)
+		showGrowthInCurrentUsage(path);
+	else if (selectedAction == revealAction)
+		revealPath(path);
+}
+
+void MainWindow::showGrowthInCurrentUsage(const NativePath& path)
+{
 	m_ui->resultViewTabs->setCurrentIndex(UsageViewIndex);
 	if (m_ui->snapshotUsageWidget->selectPath(path))
 		return;
 
 	m_ui->resultViewTabs->setCurrentIndex(GrowthViewIndex);
 	m_ui->scanStatusLabel->setText("The selected growth path is not available in the current snapshot view.");
-}
-
-void MainWindow::revealSelectedGrowthInFileManager()
-{
-	revealTableItemInFileManager(m_ui->changesTable->currentItem());
 }
 
 void MainWindow::revealTableItemInFileManager(const QTableWidgetItem* item)

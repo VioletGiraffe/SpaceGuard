@@ -8,6 +8,7 @@
 #include <memory>
 
 class QTreeWidgetItem;
+class QPoint;
 
 namespace Ui {
 class SnapshotUsageWidget;
@@ -36,6 +37,7 @@ private:
 	};
 
 	void populateChildren(QTreeWidgetItem* item);
+	void showUsageContextMenu(const QPoint& position);
 	void selectNextSearchResult();
 	[[nodiscard]] std::optional<NativePath> findNextMatchingPath(const QString& query) const;
 

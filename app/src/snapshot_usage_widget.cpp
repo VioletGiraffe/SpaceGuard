@@ -3,8 +3,10 @@
 #include "ui_format.h"
 #include "ui_snapshot_usage_widget.h"
 
+#include <QAction>
 #include <QHeaderView>
 #include <QLineEdit>
+#include <QMenu>
 #include <QPushButton>
 #include <QStringList>
 #include <QTreeWidget>
@@ -158,12 +160,9 @@ SnapshotUsageWidget::SnapshotUsageWidget(QWidget* parent)
 	connect(m_ui->usageTree, &QTreeWidget::itemActivated, this, [this](QTreeWidgetItem* item, int) {
 		emit pathActivated(usageTreeItem(item)->path);
 	});
-	connect(m_ui->usageTree, &QTreeWidget::itemSelectionChanged, this, [this] {
-		m_ui->revealSelectedButton->setEnabled(!m_ui->usageTree->selectedItems().isEmpty());
-	});
-	connect(m_ui->revealSelectedButton, &QAbstractButton::clicked, this, [this] {
-		if (QTreeWidgetItem* item = m_ui->usageTree->currentItem())
-			emit pathActivated(usageTreeItem(item)->path);
+	m_ui->usageTree->setContextMenuPolicy(Qt::CustomContextMenu);
+	connect(m_ui->usageTree, &QWidget::customContextMenuRequested, this, [this](const QPoint& position) {
+		showUsageContextMenu(position);
 	});
 	connect(m_ui->searchEdit, &QLineEdit::textChanged, this, [this](const QString& query) {
 		m_lastSearchPath.reset();
@@ -236,7 +235,6 @@ void SnapshotUsageWidget::clearSnapshot()
 	m_ui->findNextButton->setEnabled(false);
 	m_ui->searchStatusLabel->clear();
 	m_ui->searchStatusLabel->setToolTip(QString{});
-	m_ui->revealSelectedButton->setEnabled(false);
 	m_ui->snapshotContextLabel->setText("No current snapshot available.");
 	m_ui->snapshotQualificationLabel->clear();
 	m_ui->snapshotQualificationLabel->setVisible(false);
@@ -281,6 +279,21 @@ bool SnapshotUsageWidget::selectPath(const NativePath& path)
 	m_ui->usageTree->scrollToItem(currentItem, QAbstractItemView::PositionAtCenter);
 	m_ui->usageTree->setFocus();
 	return true;
+}
+
+void SnapshotUsageWidget::showUsageContextMenu(const QPoint& position)
+{
+	if (QTreeWidgetItem* clickedItem = m_ui->usageTree->itemAt(position))
+		m_ui->usageTree->setCurrentItem(clickedItem);
+	QTreeWidgetItem* selectedItem = m_ui->usageTree->currentItem();
+	if (!selectedItem)
+		return;
+	const NativePath path = usageTreeItem(selectedItem)->path;
+
+	QMenu menu{m_ui->usageTree};
+	QAction* revealAction = menu.addAction("Reveal in file manager");
+	if (menu.exec(m_ui->usageTree->viewport()->mapToGlobal(position)) == revealAction)
+		emit pathActivated(path);
 }
 
 void SnapshotUsageWidget::selectNextSearchResult()

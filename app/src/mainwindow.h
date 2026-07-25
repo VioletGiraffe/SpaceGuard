@@ -12,6 +12,7 @@
 #include <stdint.h>
 
 class QTableWidgetItem;
+class QPoint;
 
 namespace Ui {
 class MainWindow;
@@ -50,9 +51,8 @@ private:
 	void populateDiagnostics();
 	void populateCompletedScanDiagnostics(const Snapshot& snapshot);
 	void updateDetailsDisclosure();
-	void updateGrowthActions();
-	void showSelectedGrowthInCurrentUsage();
-	void revealSelectedGrowthInFileManager();
+	void showGrowthContextMenu(const QPoint& position);
+	void showGrowthInCurrentUsage(const NativePath& path);
 	void revealTableItemInFileManager(const QTableWidgetItem* item);
 	void revealPath(const NativePath& path);
 

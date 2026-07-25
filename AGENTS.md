@@ -19,9 +19,12 @@ The product-specific code is currently small and lives in `app/src/`:
 - `snapshot_usage_widget.{h,cpp,ui}` owns lazy presentation of a completed snapshot's current allocated-space tree,
   including exact/lower-bound/unknown totals, percentages, boundary states, hard-link accounting explanations, authoritative
   snapshot-path search, and lazy expansion to a selected native path. It initially expands the root and materializes
-  that one level; deeper directories remain lazy.
+  that one level; deeper directories remain lazy. Row-specific navigation and file-manager actions live in the growth
+  table and usage-tree context menus; item activation remains the direct reveal shortcut.
 - Snapshot files use the `.spaceguard` extension and a versioned, platform-marked `QDataStream`/`qCompress` format
   written through `QSaveFile`. Legacy prototype snapshots are rejected.
+- `doc/deferred.md` is the canonical trigger-based backlog for product, UI, and optional scanner-performance work
+  deliberately excluded from the completed implementation.
 
 The prototype replacement is complete in source: the final snapshot model, persistence, deterministic
 accounting/comparison, native multithreaded scan, asynchronous runner, UI workflow, hardening, and cross-platform
@@ -42,7 +45,7 @@ Top-level components:
 - `app/`: SpaceGuard executable and all product-specific code.
 - `thin_io/`: native low-level file and filesystem I/O. Use it where Qt filesystem APIs cannot provide the required
   correctness or native metadata. Keep recursion, threading, cancellation, aggregation, and Qt adapters out of this
-  library. See `thin_io/README.md` for its completed API contract and `doc/plan.md` for SpaceGuard integration.
+  library. See `thin_io/README.md` for its completed API contract.
 - `cpputils/`: general C++ utilities. Relevant here are `CWorkerThreadPool` and `CExecutionQueue`; use these for
   background scan orchestration and UI-thread publication.
 - `qtutils/`: reusable Qt helpers, settings, widgets, dialogs, and platform integration.

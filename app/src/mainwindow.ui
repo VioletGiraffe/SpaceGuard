@@ -162,7 +162,7 @@
        <item>
         <widget class="QTableWidget" name="changesTable">
          <property name="accessibleName"><string>Positive allocated-space growth</string></property>
-         <property name="accessibleDescription"><string>Rows are comparable locations with positive allocated-space growth. Activate a row to reveal it in the file manager.</string></property>
+         <property name="accessibleDescription"><string>Rows are comparable locations with positive allocated-space growth. Right-click a row for current-usage and file-manager actions; activate it to reveal it in the file manager.</string></property>
          <property name="alternatingRowColors"><bool>true</bool></property>
          <property name="editTriggers"><set>QAbstractItemView::EditTrigger::NoEditTriggers</set></property>
          <property name="selectionMode"><enum>QAbstractItemView::SelectionMode::SingleSelection</enum></property>
@@ -180,34 +180,6 @@
          <property name="alignment"><set>Qt::AlignmentFlag::AlignCenter</set></property>
          <property name="text"><string>No positive growth was found.</string></property>
          <property name="wordWrap"><bool>true</bool></property>
-        </widget>
-       </item>
-       <item>
-        <widget class="QWidget" name="growthActionsWidget">
-         <layout class="QHBoxLayout" name="growthActionsLayout">
-          <property name="leftMargin"><number>0</number></property>
-          <property name="topMargin"><number>0</number></property>
-          <property name="rightMargin"><number>0</number></property>
-          <property name="bottomMargin"><number>0</number></property>
-          <item>
-           <spacer name="growthActionsSpacer">
-            <property name="orientation"><enum>Qt::Orientation::Horizontal</enum></property>
-            <property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property>
-           </spacer>
-          </item>
-          <item>
-           <widget class="QPushButton" name="showInUsageButton">
-            <property name="enabled"><bool>false</bool></property>
-            <property name="text"><string>Show in current space usage</string></property>
-           </widget>
-          </item>
-          <item>
-           <widget class="QPushButton" name="revealGrowthButton">
-            <property name="enabled"><bool>false</bool></property>
-            <property name="text"><string>Reveal in file manager</string></property>
-           </widget>
-          </item>
-         </layout>
         </widget>
        </item>
       </layout>
