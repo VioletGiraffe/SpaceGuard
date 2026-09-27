@@ -116,10 +116,10 @@ void writeAttributes(QDataStream& stream, const SnapshotEntryAttributes& attribu
 bool readAttributes(QDataStream& stream, SnapshotEntryAttributes& attributes)
 {
 	uint8_t kind = 0;
-	if (!readByte(stream, kind) || kind > static_cast<uint8_t>(thin_io::entry_kind::other))
+	if (!readByte(stream, kind) || kind > static_cast<uint8_t>(SnapshotEntryKind::other))
 		return false;
 
-	attributes.kind = static_cast<thin_io::entry_kind>(kind);
+	attributes.kind = static_cast<SnapshotEntryKind>(kind);
 	if (!readBool(stream, attributes.isLink) || !readBool(stream, attributes.sparse) || !readBool(stream, attributes.compressed))
 		return false;
 
@@ -241,7 +241,7 @@ bool isValidEntry(const SnapshotEntry& entry, const uint32_t depth, uint64_t& to
 		return false;
 
 	const auto kind = entry.attributes.kind;
-	if (kind > thin_io::entry_kind::other)
+	if (kind > SnapshotEntryKind::other)
 		return false;
 
 	if (!entry.attributes.isLink && entry.attributes.reparseTag != 0)
@@ -249,7 +249,7 @@ bool isValidEntry(const SnapshotEntry& entry, const uint32_t depth, uint64_t& to
 	if (entry.metadata && entry.metadata->hardLinkCount == 0)
 		return false;
 
-	if (kind != thin_io::entry_kind::directory)
+	if (kind != SnapshotEntryKind::directory)
 		return entry.traversalState == DirectoryTraversalState::not_directory && entry.children.empty();
 
 	switch (entry.traversalState)
@@ -312,7 +312,7 @@ bool identitiesAgree(const Snapshot& snapshot)
 bool isValidSnapshot(const Snapshot& snapshot)
 {
 	if (!isValidRootPath(snapshot.rootPath)
-		|| snapshot.root.attributes.kind != thin_io::entry_kind::directory
+		|| snapshot.root.attributes.kind != SnapshotEntryKind::directory
 		|| snapshot.root.attributes.isLink
 		|| !snapshot.root.metadata
 		|| snapshot.root.traversalState != DirectoryTraversalState::completed
@@ -560,7 +560,7 @@ using HardLinkEntries = std::map<thin_io::entry_identity, std::vector<HardLinkEn
 
 bool localCoverageIsComplete(const SnapshotEntry& entry)
 {
-	if (entry.attributes.kind != thin_io::entry_kind::directory)
+	if (entry.attributes.kind != SnapshotEntryKind::directory)
 		return true;
 
 	return entry.traversalState == DirectoryTraversalState::completed
@@ -579,7 +579,7 @@ void initializeDerivedData(SnapshotEntry& entry, const NativePath& path, HardLin
 	}
 	else if (entry.metadata)
 	{
-		const bool isRegularFile = entry.attributes.kind == thin_io::entry_kind::regular_file;
+		const bool isRegularFile = entry.attributes.kind == SnapshotEntryKind::regular_file;
 		if (isRegularFile && entry.metadata->hardLinkCount > 1 && entry.metadata->identity)
 		{
 			hardLinkEntries[*entry.metadata->identity].push_back({&entry, path});

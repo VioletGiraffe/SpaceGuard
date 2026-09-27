@@ -343,6 +343,12 @@ TEST_CASE("Snapshot scanner preserves every discovered kind and traverses only o
 	std::atomic_bool canceled = false;
 
 	const Snapshot snapshot = completedSnapshot(scanSnapshot(rootPath(), filesystem, canceled));
+	const auto kindOf = [&snapshot](const char* name) { return snapshot.root.children.at(nativeName(name)).attributes.kind; };
+	CHECK(kindOf("file") == SnapshotEntryKind::regular_file);
+	CHECK(kindOf("directory") == SnapshotEntryKind::directory);
+	CHECK(kindOf("link") == SnapshotEntryKind::directory);
+	CHECK(kindOf("other") == SnapshotEntryKind::other);
+	CHECK(kindOf("unknown") == SnapshotEntryKind::unknown);
 	CHECK(snapshot.root.children.at(nativeName("directory")).traversalState == DirectoryTraversalState::completed);
 	CHECK(snapshot.root.children.at(nativeName("directory")).children.contains(nativeName("nested")));
 	CHECK(snapshot.root.children.at(nativeName("link")).traversalState == DirectoryTraversalState::link_boundary);

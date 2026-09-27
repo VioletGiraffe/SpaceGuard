@@ -48,7 +48,7 @@ SnapshotEntryMetadata metadata(const uint64_t logicalSize, const uint64_t alloca
 SnapshotEntry fileEntry(const uint64_t logicalSize, const uint64_t allocatedSize, const thin_io::entry_identity& entryIdentity)
 {
 	SnapshotEntry entry;
-	entry.attributes = {.kind = thin_io::entry_kind::regular_file, .sparse = true, .compressed = true};
+	entry.attributes = {.kind = SnapshotEntryKind::regular_file, .sparse = true, .compressed = true};
 	entry.metadata = metadata(logicalSize, allocatedSize, 2, entryIdentity);
 	return entry;
 }
@@ -56,7 +56,7 @@ SnapshotEntry fileEntry(const uint64_t logicalSize, const uint64_t allocatedSize
 SnapshotEntry directoryEntry(const DirectoryTraversalState state, std::optional<SnapshotEntryMetadata> entryMetadata)
 {
 	SnapshotEntry entry;
-	entry.attributes.kind = thin_io::entry_kind::directory;
+	entry.attributes.kind = SnapshotEntryKind::directory;
 	entry.metadata = std::move(entryMetadata);
 	entry.traversalState = state;
 	return entry;
@@ -74,7 +74,7 @@ Snapshot makeSnapshot(const bool reverseInsertionOrder = false)
 	snapshot.root = directoryEntry(DirectoryTraversalState::completed, metadata(0, 4096, 1, identity(filesystem, 1)));
 
 	SnapshotEntry completed = directoryEntry(DirectoryTraversalState::completed, metadata(0, 4096, 1, identity(filesystem, 2)));
-	completed.children.try_emplace(nativeName("other"), SnapshotEntry{{thin_io::entry_kind::other, false, false, false, 0}, metadata(7, 8, 1)});
+	completed.children.try_emplace(nativeName("other"), SnapshotEntry{{.kind = SnapshotEntryKind::other}, metadata(7, 8, 1)});
 
 	SnapshotEntry failed = directoryEntry(DirectoryTraversalState::enumeration_failed, metadata(0, 4096, 1, identity(filesystem, 3)));
 	SnapshotEntry unknownMetadata = directoryEntry(DirectoryTraversalState::metadata_unavailable, {});
@@ -85,7 +85,7 @@ Snapshot makeSnapshot(const bool reverseInsertionOrder = false)
 #endif
 	SnapshotEntry boundary = directoryEntry(DirectoryTraversalState::mount_boundary, metadata(0, 4096, 1, identity(99, 4)));
 	SnapshotEntry unknown;
-	unknown.attributes.kind = thin_io::entry_kind::unknown;
+	unknown.attributes.kind = SnapshotEntryKind::unknown;
 
 #ifdef _WIN32
 	const NativeName unusualName = QString::fromWCharArray(L"unicode-\u0416");
@@ -243,7 +243,7 @@ TEST_CASE("Large snapshots round-trip", "[snapshot][persistence]")
 	for (size_t i = 0; i < EntryCount; ++i)
 	{
 		SnapshotEntry entry;
-		entry.attributes = {.kind = thin_io::entry_kind::regular_file, .sparse = true, .compressed = true};
+		entry.attributes = {.kind = SnapshotEntryKind::regular_file, .sparse = true, .compressed = true};
 		entry.metadata = metadata(i + 1, (i + 1) * 4096, 1);
 		const std::string name = "file-" + std::to_string(i);
 		original.root.children.append_unsorted(nativeName(name.c_str()), std::move(entry));

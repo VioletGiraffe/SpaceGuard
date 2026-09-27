@@ -46,7 +46,7 @@ struct DisplayedAllocation
 
 std::optional<uint64_t> exactDisplayedAllocatedSize(const SnapshotEntry& entry)
 {
-	if (entry.attributes.kind == thin_io::entry_kind::directory)
+	if (entry.attributes.kind == SnapshotEntryKind::directory)
 		return entry.derived.subtreeAllocatedSize;
 	return entry.derived.localAllocatedSize;
 }

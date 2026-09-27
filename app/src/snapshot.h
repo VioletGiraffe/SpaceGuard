@@ -39,10 +39,17 @@ enum class SnapshotOperation : uint8_t {
 	entry_changed_during_scan
 };
 
+enum class SnapshotEntryKind : uint8_t {
+	unknown,
+	regular_file,
+	directory,
+	other
+};
+
 // The persisted subset of thin_io::entry_attributes.
 struct SnapshotEntryAttributes
 {
-	thin_io::entry_kind kind = thin_io::entry_kind::unknown;
+	SnapshotEntryKind kind = SnapshotEntryKind::unknown;
 	bool isLink = false;
 	bool sparse = false;
 	bool compressed = false;

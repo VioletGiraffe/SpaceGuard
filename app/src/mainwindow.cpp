@@ -175,7 +175,7 @@ QString comparisonHeadline(const SnapshotComparisonResult& comparison, const uin
 
 QString comparisonChangeType(const ComparisonChange& change)
 {
-	if (change.currentEntryKind == thin_io::entry_kind::directory)
+	if (change.currentEntryKind == SnapshotEntryKind::directory)
 		return change.baselineEntryExists ? "Folder total" : "New folder total";
 	return change.baselineEntryExists ? "Expanded" : "New";
 }
@@ -743,7 +743,7 @@ void MainWindow::displayComparison()
 		m_ui->changesTable->setItem(row, 0, createByteCountItem(change.allocatedIncrease, change.path));
 		m_ui->changesTable->setItem(row, 1, new QTableWidgetItem{nativePathForDisplay(change.path)});
 		auto* typeItem = new QTableWidgetItem{comparisonChangeType(change)};
-		if (change.currentEntryKind == thin_io::entry_kind::directory)
+		if (change.currentEntryKind == SnapshotEntryKind::directory)
 			typeItem->setToolTip("Net allocated-size change for this folder's comparable subtree.");
 		m_ui->changesTable->setItem(row, 2, typeItem);
 		m_ui->changesTable->setItem(row, 3, createByteCountItem(change.baselineSubtreeAllocatedSize, change.path));

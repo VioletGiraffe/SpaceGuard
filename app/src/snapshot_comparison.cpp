@@ -63,7 +63,7 @@ std::optional<NativePath> firstCommonSingleLinkAlias(
 			continue;
 
 		const SnapshotEntry& entry = *accounting->second.sourceEntry;
-		if (entry.attributes.kind == thin_io::entry_kind::regular_file
+		if (entry.attributes.kind == SnapshotEntryKind::regular_file
 			&& entry.metadata && entry.metadata->hardLinkCount == 1
 			&& entry.metadata->identity && *entry.metadata->identity == group.identity
 			&& accounting->second.localAllocatedSize)
@@ -146,7 +146,7 @@ std::pair<AccountingByPath, AccountingByPath> buildComparisonAccounting(const Sn
 bool isValidComparisonRoot(const Snapshot& snapshot)
 {
 	return !snapshot.rootPath.isEmpty()
-		&& snapshot.root.attributes.kind == thin_io::entry_kind::directory
+		&& snapshot.root.attributes.kind == SnapshotEntryKind::directory
 		&& !snapshot.root.attributes.isLink
 		&& snapshot.root.metadata.has_value()
 		&& snapshot.root.traversalState == DirectoryTraversalState::completed;
@@ -247,7 +247,7 @@ bool childrenAreAuthoritative(const ComparisonSide& side)
 {
 	if (!side.entry)
 		return side.absenceAuthoritative;
-	if (side.entry->attributes.kind != thin_io::entry_kind::directory)
+	if (side.entry->attributes.kind != SnapshotEntryKind::directory)
 		return true;
 	return side.entry->traversalState == DirectoryTraversalState::completed
 		|| side.entry->traversalState == DirectoryTraversalState::link_boundary

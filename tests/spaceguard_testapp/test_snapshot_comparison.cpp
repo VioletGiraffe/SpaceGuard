@@ -42,7 +42,7 @@ SnapshotEntry regularFile(const uint64_t allocatedSize, const uint64_t hardLinkC
 	std::optional<thin_io::entry_identity> identity = {})
 {
 	SnapshotEntry entry;
-	entry.attributes.kind = thin_io::entry_kind::regular_file;
+	entry.attributes.kind = SnapshotEntryKind::regular_file;
 	entry.metadata = entryMetadata(allocatedSize, hardLinkCount, std::move(identity));
 	return entry;
 }
@@ -50,7 +50,7 @@ SnapshotEntry regularFile(const uint64_t allocatedSize, const uint64_t hardLinkC
 SnapshotEntry directory(const DirectoryTraversalState state = DirectoryTraversalState::completed)
 {
 	SnapshotEntry entry;
-	entry.attributes.kind = thin_io::entry_kind::directory;
+	entry.attributes.kind = SnapshotEntryKind::directory;
 	entry.metadata = entryMetadata(0);
 	entry.traversalState = state;
 	return entry;
@@ -86,7 +86,7 @@ const ComparisonChange* findChange(const SnapshotComparisonResult& result, const
 }
 
 ComparisonChange expectedChange(const NativePath& path, const uint64_t baselineSubtreeAllocatedSize, const uint64_t currentSubtreeAllocatedSize,
-	const thin_io::entry_kind currentEntryKind, const bool baselineEntryExists)
+	const SnapshotEntryKind currentEntryKind, const bool baselineEntryExists)
 {
 	ComparisonChange change;
 	change.path = path;
@@ -160,7 +160,7 @@ TEST_CASE("Derived accounting retains known allocation below incomplete subtrees
 	partialDirectory.children.try_emplace(nativeName("incomplete"), directory(DirectoryTraversalState::enumeration_failed));
 	snapshot.root.children.try_emplace(nativeName("partial"), std::move(partialDirectory));
 	SnapshotEntry unknownFile;
-	unknownFile.attributes.kind = thin_io::entry_kind::regular_file;
+	unknownFile.attributes.kind = SnapshotEntryKind::regular_file;
 	snapshot.root.children.try_emplace(nativeName("unknown"), std::move(unknownFile));
 
 	snapshot.rebuildDerivedData();
@@ -261,9 +261,9 @@ TEST_CASE("Comparison reports lowest significant positive changes", "[snapshot][
 	const ComparisonChange* added = findChange(*result, childPath(childPath(baseline.rootPath, "added"), "large"));
 	REQUIRE(existing);
 	REQUIRE(added);
-	CHECK(*existing == expectedChange(childPath(baseline.rootPath, "existing"), 100, 150, thin_io::entry_kind::regular_file, true));
+	CHECK(*existing == expectedChange(childPath(baseline.rootPath, "existing"), 100, 150, SnapshotEntryKind::regular_file, true));
 	CHECK(*added == expectedChange(
-		childPath(childPath(baseline.rootPath, "added"), "large"), 0, 70, thin_io::entry_kind::regular_file, false));
+		childPath(childPath(baseline.rootPath, "added"), "large"), 0, 70, SnapshotEntryKind::regular_file, false));
 	CHECK(result->summary.allocatedTreeChange == (MagnitudeChange{ChangeDirection::increase, 110}));
 
 	const auto aboveThreshold = compareSnapshots(baseline, current, 111);
@@ -291,7 +291,7 @@ TEST_CASE("Comparison reports an aggregate when significant descendants are abse
 		REQUIRE(result);
 		REQUIRE(result->changes.size() == 1);
 		CHECK(result->changes.front() == expectedChange(
-			childPath(current.rootPath, "added"), 0, 60, thin_io::entry_kind::directory, false));
+			childPath(current.rootPath, "added"), 0, 60, SnapshotEntryKind::directory, false));
 	}
 
 	SECTION("Existing directory")
@@ -312,7 +312,7 @@ TEST_CASE("Comparison reports an aggregate when significant descendants are abse
 		REQUIRE(result);
 		REQUIRE(result->changes.size() == 1);
 		CHECK(result->changes.front() == expectedChange(
-			childPath(current.rootPath, "existing"), 20, 60, thin_io::entry_kind::directory, true));
+			childPath(current.rootPath, "existing"), 20, 60, SnapshotEntryKind::directory, true));
 	}
 }
 
@@ -330,7 +330,7 @@ TEST_CASE("Comparison keeps positive growth visible when larger deletions increa
 	REQUIRE(result);
 	REQUIRE(result->changes.size() == 1);
 	CHECK(result->changes.front() == expectedChange(
-		childPath(current.rootPath, "accumulated"), 0, 40, thin_io::entry_kind::regular_file, false));
+		childPath(current.rootPath, "accumulated"), 0, 40, SnapshotEntryKind::regular_file, false));
 	CHECK(result->summary.freeSpaceChange == (MagnitudeChange{ChangeDirection::increase, 60}));
 	CHECK(result->summary.allocatedTreeChange == (MagnitudeChange{ChangeDirection::decrease, 60}));
 	CHECK(result->summary.unexplainedConsumptionChange == (MagnitudeChange{}));
@@ -350,7 +350,7 @@ TEST_CASE("Incomplete regions do not hide comparable siblings", "[snapshot][comp
 	const auto result = comparePrepared(baseline, current, 50);
 	REQUIRE(result);
 	REQUIRE(result->changes.size() == 1);
-	CHECK(result->changes.front() == expectedChange(childPath(current.rootPath, "good"), 100, 200, thin_io::entry_kind::regular_file, true));
+	CHECK(result->changes.front() == expectedChange(childPath(current.rootPath, "good"), 100, 200, SnapshotEntryKind::regular_file, true));
 	const ComparisonExcludedRegion* bad = findExcludedRegion(*result, childPath(current.rootPath, "bad"));
 	REQUIRE(bad);
 	CHECK_FALSE(bad->baselineCoverageIncomplete);
@@ -379,7 +379,7 @@ TEST_CASE("Comparison results own source-derived paths", "[snapshot][comparison]
 	}
 
 	REQUIRE(comparison.changes.size() == 1);
-	CHECK(comparison.changes.front() == expectedChange(changedPath, 0, 100, thin_io::entry_kind::regular_file, false));
+	CHECK(comparison.changes.front() == expectedChange(changedPath, 0, 100, SnapshotEntryKind::regular_file, false));
 	REQUIRE(comparison.excludedRegions.size() == 1);
 	CHECK(comparison.excludedRegions.front().path == excludedPath);
 }
@@ -425,7 +425,7 @@ TEST_CASE("Common hard-link aliases anchor groups across snapshots", "[snapshot]
 	const auto allocationGrew = comparePrepared(baseline, current, 1);
 	REQUIRE(allocationGrew);
 	REQUIRE(allocationGrew->changes.size() == 1);
-	CHECK(allocationGrew->changes.front() == expectedChange(childPath(current.rootPath, "b"), 100, 150, thin_io::entry_kind::regular_file, true));
+	CHECK(allocationGrew->changes.front() == expectedChange(childPath(current.rootPath, "b"), 100, 150, SnapshotEntryKind::regular_file, true));
 
 	Snapshot twoAliases = makeSnapshot();
 	twoAliases.root.children.try_emplace(nativeName("a"), regularFile(100, 2, identity));
@@ -449,7 +449,7 @@ TEST_CASE("Equal identities at disjoint paths are not treated as moves", "[snaps
 	const auto result = comparePrepared(baseline, current, 1);
 	REQUIRE(result);
 	REQUIRE(result->changes.size() == 1);
-	CHECK(result->changes.front() == expectedChange(childPath(current.rootPath, "new"), 0, 100, thin_io::entry_kind::regular_file, false));
+	CHECK(result->changes.front() == expectedChange(childPath(current.rootPath, "new"), 0, 100, SnapshotEntryKind::regular_file, false));
 	CHECK(result->summary.allocatedTreeChange == (MagnitudeChange{}));
 }
 

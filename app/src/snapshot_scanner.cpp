@@ -24,9 +24,21 @@ RESTORE_COMPILER_WARNINGS
 
 namespace {
 
+SnapshotEntryKind snapshotEntryKind(const thin_io::entry_kind kind)
+{
+	switch (kind)
+	{
+	case thin_io::entry_kind::unknown: return SnapshotEntryKind::unknown;
+	case thin_io::entry_kind::regular_file: return SnapshotEntryKind::regular_file;
+	case thin_io::entry_kind::directory: return SnapshotEntryKind::directory;
+	case thin_io::entry_kind::other: return SnapshotEntryKind::other;
+	}
+	return SnapshotEntryKind::other;
+}
+
 SnapshotEntryAttributes snapshotAttributes(const thin_io::entry_attributes& attributes)
 {
-	return {.kind = attributes.kind, .isLink = attributes.is_link, .sparse = attributes.sparse, .compressed = attributes.compressed, .reparseTag = attributes.reparse_tag};
+	return {.kind = snapshotEntryKind(attributes.kind), .isLink = attributes.is_link, .sparse = attributes.sparse, .compressed = attributes.compressed, .reparseTag = attributes.reparse_tag};
 }
 
 SnapshotEntryMetadata snapshotMetadata(const thin_io::entry_metadata& metadata)
@@ -43,7 +55,7 @@ SnapshotScanFailure scanFailure(const SnapshotScanFailureCode code, const Native
 
 void markMetadataUnavailable(SnapshotEntry& entry)
 {
-	if (entry.attributes.kind == thin_io::entry_kind::directory)
+	if (entry.attributes.kind == SnapshotEntryKind::directory)
 		entry.traversalState = entry.attributes.isLink ? DirectoryTraversalState::link_boundary : DirectoryTraversalState::metadata_unavailable;
 }
 
@@ -257,7 +269,7 @@ private:
 			}
 
 			child.metadata = snapshotMetadata(*metadata);
-			if (child.attributes.kind != thin_io::entry_kind::directory)
+			if (child.attributes.kind != SnapshotEntryKind::directory)
 				continue;
 			if (child.attributes.isLink)
 			{
