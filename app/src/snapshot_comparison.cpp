@@ -147,7 +147,7 @@ bool isValidComparisonRoot(const Snapshot& snapshot)
 {
 	return !snapshot.rootPath.isEmpty()
 		&& snapshot.root.attributes.kind == thin_io::entry_kind::directory
-		&& !snapshot.root.attributes.is_link
+		&& !snapshot.root.attributes.isLink
 		&& snapshot.root.metadata.has_value()
 		&& snapshot.root.traversalState == DirectoryTraversalState::completed;
 }

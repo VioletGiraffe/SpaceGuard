@@ -229,7 +229,7 @@ TEST_CASE("Derived accounting excludes mount boundaries but includes link entrie
 	SnapshotEntry mount = directory(DirectoryTraversalState::mount_boundary);
 	mount.metadata = entryMetadata(500, 1, entryIdentity(99, 1));
 	SnapshotEntry link = directory(DirectoryTraversalState::link_boundary);
-	link.attributes.is_link = true;
+	link.attributes.isLink = true;
 	link.metadata = entryMetadata(20);
 	snapshot.root.children.try_emplace(nativeName("link"), std::move(link));
 	snapshot.root.children.try_emplace(nativeName("mount"), std::move(mount));
@@ -512,7 +512,7 @@ TEST_CASE("Root eligibility uses paths and available identities", "[snapshot][co
 	{
 		Snapshot baseline = makeSnapshot();
 		Snapshot current = makeSnapshot();
-		baseline.root.attributes.is_link = true;
+		baseline.root.attributes.isLink = true;
 		const auto result = comparePrepared(baseline, current, 1);
 		REQUIRE_FALSE(result);
 		CHECK(result.error() == SnapshotComparisonError::invalid_baseline_root);

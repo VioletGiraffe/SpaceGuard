@@ -39,6 +39,18 @@ enum class SnapshotOperation : uint8_t {
 	entry_changed_during_scan
 };
 
+// The persisted subset of thin_io::entry_attributes.
+struct SnapshotEntryAttributes
+{
+	thin_io::entry_kind kind = thin_io::entry_kind::unknown;
+	bool isLink = false;
+	bool sparse = false;
+	bool compressed = false;
+	uint32_t reparseTag = 0;
+
+	[[nodiscard]] bool operator==(const SnapshotEntryAttributes&) const = default;
+};
+
 struct SnapshotEntryMetadata
 {
 	uint64_t logicalSize = 0;
@@ -61,7 +73,7 @@ struct SnapshotEntryDerivedData
 
 struct SnapshotEntry
 {
-	thin_io::entry_attributes attributes;
+	SnapshotEntryAttributes attributes;
 	std::optional<SnapshotEntryMetadata> metadata;
 	DirectoryTraversalState traversalState = DirectoryTraversalState::not_directory;
 	flat_map<NativeName, SnapshotEntry> children;

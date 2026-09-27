@@ -93,7 +93,10 @@ thin_io::entry_metadata metadata(const thin_io::entry_kind kind, const uint64_t 
 
 thin_io::directory_entry listed(const char* name, const thin_io::entry_kind kind, const bool isLink = false)
 {
-	return {thinIoName(name), attributes(kind, isLink), {}};
+	thin_io::directory_entry entry;
+	entry.name = thinIoName(name);
+	entry.attributes = attributes(kind, isLink);
+	return entry;
 }
 
 template <class Value>
@@ -409,6 +412,21 @@ TEST_CASE("Snapshot scanner marks entries replaced between listing and metadata"
 	CHECK(snapshot.diagnostics[1].nativeErrorCode == 12);
 }
 
+TEST_CASE("Snapshot scanner ignores unpersisted attributes when matching listing and metadata", "[snapshot][scanner]")
+{
+	// macOS listings omit UF_HIDDEN, while the metadata query reports it.
+	FakeFilesystem filesystem;
+	configureRoot(filesystem, {listed("hidden", thin_io::entry_kind::regular_file)});
+	thin_io::entry_metadata hiddenMetadata = metadata(thin_io::entry_kind::regular_file, 7, 2);
+	hiddenMetadata.attributes.hidden = true;
+	filesystem.metadataByPath.emplace(appendNativeName(rootPath(), nativeName("hidden")), hiddenMetadata);
+	std::atomic_bool canceled = false;
+
+	const Snapshot snapshot = completedSnapshot(scanSnapshot(rootPath(), filesystem, canceled));
+	CHECK(snapshot.root.children.at(nativeName("hidden")).metadata.has_value());
+	CHECK(snapshot.diagnostics.empty());
+}
+
 TEST_CASE("Snapshot scanner cancellation never returns a partial snapshot", "[snapshot][scanner]")
 {
 	SECTION("before start")
@@ -720,7 +738,7 @@ TEST_CASE("Snapshot scanner handles native real-filesystem names, nesting, hard 
 	if (symbolicLinkError)
 		WARN("Symbolic-link integration check skipped: " << symbolicLinkError.message());
 	else
-		CHECK(snapshot.root.children.at(nativeName("directory-link")).attributes.is_link);
+		CHECK(snapshot.root.children.at(nativeName("directory-link")).attributes.isLink);
 	const SnapshotEntry& sparseEntry = snapshot.root.children.at(nativeName("sparse.bin"));
 	REQUIRE(sparseEntry.metadata);
 	CHECK(sparseEntry.metadata->logicalSize == 1024 * 1024 + 1);

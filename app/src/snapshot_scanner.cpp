@@ -8,9 +8,11 @@ using FilesystemAccess = TestFilesystemAccess;
 #include "filesystem_access.h"
 #endif
 
-#include "threading/cworkerthread.h"
+#include "threading/cthreadpool.h"
 
+DISABLE_COMPILER_WARNINGS
 #include <QDateTime>
+RESTORE_COMPILER_WARNINGS
 
 #include <algorithm>
 #include <assert.h>
@@ -21,6 +23,11 @@ using FilesystemAccess = TestFilesystemAccess;
 #include <utility>
 
 namespace {
+
+SnapshotEntryAttributes snapshotAttributes(const thin_io::entry_attributes& attributes)
+{
+	return {.kind = attributes.kind, .isLink = attributes.is_link, .sparse = attributes.sparse, .compressed = attributes.compressed, .reparseTag = attributes.reparse_tag};
+}
 
 SnapshotEntryMetadata snapshotMetadata(const thin_io::entry_metadata& metadata)
 {
@@ -37,7 +44,7 @@ SnapshotScanFailure scanFailure(const SnapshotScanFailureCode code, const Native
 void markMetadataUnavailable(SnapshotEntry& entry)
 {
 	if (entry.attributes.kind == thin_io::entry_kind::directory)
-		entry.traversalState = entry.attributes.is_link ? DirectoryTraversalState::link_boundary : DirectoryTraversalState::metadata_unavailable;
+		entry.traversalState = entry.attributes.isLink ? DirectoryTraversalState::link_boundary : DirectoryTraversalState::metadata_unavailable;
 }
 
 class Scanner
@@ -53,7 +60,7 @@ public:
 		return scanWithParticipants(rootPath, [this] { processDirectories(); });
 	}
 
-	SnapshotScanResult scan(const NativePath& rootPath, CWorkerThreadPool& workerPool)
+	SnapshotScanResult scan(const NativePath& rootPath, CThreadPool& workerPool)
 	{
 		return scanWithParticipants(rootPath, [this, &workerPool] {
 			workerPool.parallelFor(workerPool.maxWorkersCount(), [this](const std::size_t) noexcept { processDirectories(); });
@@ -82,7 +89,7 @@ private:
 		if (rootMetadata->attributes.is_link)
 			return scanFailure(SnapshotScanFailureCode::root_is_link, rootPath);
 
-		m_snapshot.root.attributes = rootMetadata->attributes;
+		m_snapshot.root.attributes = snapshotAttributes(rootMetadata->attributes);
 		m_snapshot.root.metadata = snapshotMetadata(*rootMetadata);
 		m_rootMountIdentity = rootMetadata->mount_id;
 		if (rootMetadata->identity)
@@ -221,7 +228,7 @@ private:
 			if (m_canceled.load(std::memory_order_relaxed))
 				return {};
 			SnapshotEntry child;
-			child.attributes = listedEntry.attributes;
+			child.attributes = snapshotAttributes(listedEntry.attributes);
 			work.entry->children.append_unsorted(nativeNameFromThinIo(listedEntry.name), std::move(child));
 		}
 		work.entry->children.end_batch();
@@ -242,7 +249,7 @@ private:
 				recordDiagnostic(childPath, SnapshotOperation::entry_metadata, metadata.error().native_code);
 				continue;
 			}
-			if (metadata->attributes != child.attributes)
+			if (snapshotAttributes(metadata->attributes) != child.attributes)
 			{
 				markMetadataUnavailable(child);
 				recordDiagnostic(childPath, SnapshotOperation::entry_changed_during_scan, {});
@@ -252,7 +259,7 @@ private:
 			child.metadata = snapshotMetadata(*metadata);
 			if (child.attributes.kind != thin_io::entry_kind::directory)
 				continue;
-			if (child.attributes.is_link)
+			if (child.attributes.isLink)
 			{
 				child.traversalState = DirectoryTraversalState::link_boundary;
 				continue;
@@ -372,7 +379,7 @@ SnapshotScanResult scanSnapshot(
 }
 
 SnapshotScanResult scanSnapshot(
-	const NativePath& normalizedRootPath, const std::atomic_bool& canceled, CWorkerThreadPool& workerPool,
+	const NativePath& normalizedRootPath, const std::atomic_bool& canceled, CThreadPool& workerPool,
 	SnapshotScanProgressCallback progressCallback)
 {
 	return Scanner{canceled, std::move(progressCallback)}.scan(normalizedRootPath, workerPool);

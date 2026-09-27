@@ -87,7 +87,7 @@ QString entryStateSuffix(const SnapshotEntry& entry)
 		return {};
 	case DirectoryTraversalState::link_boundary: return " (link boundary)";
 	case DirectoryTraversalState::mount_boundary: return " (mount boundary)";
-	case DirectoryTraversalState::not_directory: return entry.attributes.is_link ? " (link)" : QString{};
+	case DirectoryTraversalState::not_directory: return entry.attributes.isLink ? " (link)" : QString{};
 	case DirectoryTraversalState::completed: return {};
 	}
 	return {};
@@ -114,7 +114,7 @@ QString entryQualification(const SnapshotEntry& entry)
 	case DirectoryTraversalState::completed:
 		break;
 	}
-	if (entry.attributes.is_link && entry.traversalState != DirectoryTraversalState::link_boundary)
+	if (entry.attributes.isLink && entry.traversalState != DirectoryTraversalState::link_boundary)
 		qualifications.push_back("This link target was intentionally not traversed.");
 	const DisplayedAllocation allocation = displayedAllocation(entry);
 	if (allocation.overflow)

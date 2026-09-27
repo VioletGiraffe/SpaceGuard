@@ -48,7 +48,7 @@ SnapshotEntryMetadata metadata(const uint64_t logicalSize, const uint64_t alloca
 SnapshotEntry fileEntry(const uint64_t logicalSize, const uint64_t allocatedSize, const thin_io::entry_identity& entryIdentity)
 {
 	SnapshotEntry entry;
-	entry.attributes = {thin_io::entry_kind::regular_file, false, true, true, 0};
+	entry.attributes = {.kind = thin_io::entry_kind::regular_file, .sparse = true, .compressed = true};
 	entry.metadata = metadata(logicalSize, allocatedSize, 2, entryIdentity);
 	return entry;
 }
@@ -79,9 +79,9 @@ Snapshot makeSnapshot(const bool reverseInsertionOrder = false)
 	SnapshotEntry failed = directoryEntry(DirectoryTraversalState::enumeration_failed, metadata(0, 4096, 1, identity(filesystem, 3)));
 	SnapshotEntry unknownMetadata = directoryEntry(DirectoryTraversalState::metadata_unavailable, {});
 	SnapshotEntry link = directoryEntry(DirectoryTraversalState::link_boundary, metadata(0, 0, 1));
-	link.attributes.is_link = true;
+	link.attributes.isLink = true;
 #ifdef _WIN32
-	link.attributes.reparse_tag = 0xA000000C;
+	link.attributes.reparseTag = 0xA000000C;
 #endif
 	SnapshotEntry boundary = directoryEntry(DirectoryTraversalState::mount_boundary, metadata(0, 4096, 1, identity(99, 4)));
 	SnapshotEntry unknown;
@@ -243,7 +243,7 @@ TEST_CASE("Large snapshots round-trip", "[snapshot][persistence]")
 	for (size_t i = 0; i < EntryCount; ++i)
 	{
 		SnapshotEntry entry;
-		entry.attributes = {thin_io::entry_kind::regular_file, false, true, true, 0};
+		entry.attributes = {.kind = thin_io::entry_kind::regular_file, .sparse = true, .compressed = true};
 		entry.metadata = metadata(i + 1, (i + 1) * 4096, 1);
 		const std::string name = "file-" + std::to_string(i);
 		original.root.children.append_unsorted(nativeName(name.c_str()), std::move(entry));

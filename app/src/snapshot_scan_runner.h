@@ -3,7 +3,7 @@
 #include "snapshot_scanner.h"
 
 #include "threading/cexecutionqueue.h"
-#include "threading/cworkerthread.h"
+#include "threading/cthreadpool.h"
 
 #include <functional>
 #include <memory>
@@ -48,5 +48,5 @@ private:
 	std::shared_ptr<RequestState> m_activeRequest;
 	// Keep last: the scan job and its nested parallelFor helpers access the runner state above. The destructor retires
 	// the scan job while the pool can still run those helpers; reverse destruction then joins the workers before other state is released.
-	CWorkerThreadPool m_scanPool;
+	CThreadPool m_scanPool;
 };

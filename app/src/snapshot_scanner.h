@@ -8,7 +8,7 @@
 #include <stdint.h>
 #include <variant>
 
-class CWorkerThreadPool;
+class CThreadPool;
 
 enum class SnapshotScanFailureCode : uint8_t {
 	invalid_root,
@@ -55,5 +55,5 @@ using SnapshotScanProgressCallback = std::function<void(const SnapshotScanProgre
 
 // The calling thread participates, so maxWorkersCount() is the total traversal participant count.
 [[nodiscard]] SnapshotScanResult scanSnapshot(
-	const NativePath& normalizedRootPath, const std::atomic_bool& canceled, CWorkerThreadPool& workerPool,
+	const NativePath& normalizedRootPath, const std::atomic_bool& canceled, CThreadPool& workerPool,
 	SnapshotScanProgressCallback progressCallback = {});

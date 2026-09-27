@@ -104,28 +104,28 @@ bool readNativeString(QDataStream& stream, NativePath& value)
 #endif
 }
 
-void writeAttributes(QDataStream& stream, const thin_io::entry_attributes& attributes)
+void writeAttributes(QDataStream& stream, const SnapshotEntryAttributes& attributes)
 {
 	writeEnum(stream, attributes.kind);
-	writeBool(stream, attributes.is_link);
+	writeBool(stream, attributes.isLink);
 	writeBool(stream, attributes.sparse);
 	writeBool(stream, attributes.compressed);
-	stream << static_cast<quint32>(attributes.reparse_tag);
+	stream << static_cast<quint32>(attributes.reparseTag);
 }
 
-bool readAttributes(QDataStream& stream, thin_io::entry_attributes& attributes)
+bool readAttributes(QDataStream& stream, SnapshotEntryAttributes& attributes)
 {
 	uint8_t kind = 0;
 	if (!readByte(stream, kind) || kind > static_cast<uint8_t>(thin_io::entry_kind::other))
 		return false;
 
 	attributes.kind = static_cast<thin_io::entry_kind>(kind);
-	if (!readBool(stream, attributes.is_link) || !readBool(stream, attributes.sparse) || !readBool(stream, attributes.compressed))
+	if (!readBool(stream, attributes.isLink) || !readBool(stream, attributes.sparse) || !readBool(stream, attributes.compressed))
 		return false;
 
 	quint32 reparseTag = 0;
 	stream >> reparseTag;
-	attributes.reparse_tag = reparseTag;
+	attributes.reparseTag = reparseTag;
 	return stream.status() == QDataStream::Ok;
 }
 
@@ -244,7 +244,7 @@ bool isValidEntry(const SnapshotEntry& entry, const uint32_t depth, uint64_t& to
 	if (kind > thin_io::entry_kind::other)
 		return false;
 
-	if (!entry.attributes.is_link && entry.attributes.reparse_tag != 0)
+	if (!entry.attributes.isLink && entry.attributes.reparseTag != 0)
 		return false;
 	if (entry.metadata && entry.metadata->hardLinkCount == 0)
 		return false;
@@ -255,11 +255,11 @@ bool isValidEntry(const SnapshotEntry& entry, const uint32_t depth, uint64_t& to
 	switch (entry.traversalState)
 	{
 	case DirectoryTraversalState::completed:
-		if (!entry.metadata || entry.attributes.is_link)
+		if (!entry.metadata || entry.attributes.isLink)
 			return false;
 		break;
 	case DirectoryTraversalState::enumeration_failed:
-		if (!entry.metadata || entry.attributes.is_link || !entry.children.empty())
+		if (!entry.metadata || entry.attributes.isLink || !entry.children.empty())
 			return false;
 		break;
 	case DirectoryTraversalState::metadata_unavailable:
@@ -267,11 +267,11 @@ bool isValidEntry(const SnapshotEntry& entry, const uint32_t depth, uint64_t& to
 			return false;
 		break;
 	case DirectoryTraversalState::link_boundary:
-		if (!entry.attributes.is_link || !entry.children.empty())
+		if (!entry.attributes.isLink || !entry.children.empty())
 			return false;
 		break;
 	case DirectoryTraversalState::mount_boundary:
-		if (!entry.metadata || entry.attributes.is_link || !entry.metadata->identity || !entry.children.empty())
+		if (!entry.metadata || entry.attributes.isLink || !entry.metadata->identity || !entry.children.empty())
 			return false;
 		break;
 	case DirectoryTraversalState::not_directory:
@@ -313,7 +313,7 @@ bool isValidSnapshot(const Snapshot& snapshot)
 {
 	if (!isValidRootPath(snapshot.rootPath)
 		|| snapshot.root.attributes.kind != thin_io::entry_kind::directory
-		|| snapshot.root.attributes.is_link
+		|| snapshot.root.attributes.isLink
 		|| !snapshot.root.metadata
 		|| snapshot.root.traversalState != DirectoryTraversalState::completed
 		|| !snapshot.scanStartedAtUtc.isValid()
