@@ -254,7 +254,7 @@ QString scanFailureDescription(const SnapshotScanFailure& failure)
 	case SnapshotScanFailureCode::invalid_root: description = "The selected root path is invalid."; break;
 	case SnapshotScanFailureCode::root_metadata_unavailable: description = "The root metadata could not be read."; break;
 	case SnapshotScanFailureCode::root_not_directory: description = "The selected root is not a directory."; break;
-	case SnapshotScanFailureCode::root_is_link: description = "A link or reparse point cannot be used as the scan root."; break;
+	case SnapshotScanFailureCode::root_is_link: description = "A link cannot be used as the scan root."; break;
 	case SnapshotScanFailureCode::filesystem_space_at_start_unavailable: description = "Filesystem space could not be read before scanning."; break;
 	case SnapshotScanFailureCode::root_filesystem_identity_mismatch: description = "The root does not belong to the filesystem reported for the selected path."; break;
 	case SnapshotScanFailureCode::root_enumeration_unavailable: description = "The root directory could not be enumerated."; break;

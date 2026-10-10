@@ -418,19 +418,40 @@ TEST_CASE("Snapshot scanner marks entries replaced between listing and metadata"
 	CHECK(snapshot.diagnostics[1].nativeErrorCode == 12);
 }
 
-TEST_CASE("Snapshot scanner ignores unpersisted attributes when matching listing and metadata", "[snapshot][scanner]")
+TEST_CASE("Snapshot scanner matches listing and metadata by kind and link status only", "[snapshot][scanner]")
 {
-	// macOS listings omit UF_HIDDEN, while the metadata query reports it.
+	static constexpr uint32_t cloudTag = 0x9000301A;
 	FakeFilesystem filesystem;
-	configureRoot(filesystem, {listed("hidden", thin_io::entry_kind::regular_file)});
+	thin_io::directory_entry syncRoot = listed("sync-root", thin_io::entry_kind::directory);
+	syncRoot.attributes.reparse_tag = cloudTag;
+	thin_io::directory_entry placeholder = listed("placeholder", thin_io::entry_kind::directory);
+	placeholder.attributes.reparse_tag = cloudTag;
+	configureRoot(filesystem, {listed("hidden", thin_io::entry_kind::regular_file), syncRoot, placeholder});
+
+	// macOS listings omit UF_HIDDEN, while the metadata query reports it.
 	thin_io::entry_metadata hiddenMetadata = metadata(thin_io::entry_kind::regular_file, 7, 2);
 	hiddenMetadata.attributes.hidden = true;
 	filesystem.metadataByPath.emplace(appendNativeName(rootPath(), nativeName("hidden")), hiddenMetadata);
+	// Windows reports a cloud sync root's reparse tag in its parent's listing, but not in the query.
+	const NativePath syncRootPath = appendNativeName(rootPath(), nativeName("sync-root"));
+	filesystem.metadataByPath.emplace(syncRootPath, metadata(thin_io::entry_kind::directory, 7, 3));
+	filesystem.directories.emplace(syncRootPath, std::vector<thin_io::directory_entry>{});
+	const NativePath placeholderPath = appendNativeName(rootPath(), nativeName("placeholder"));
+	thin_io::entry_metadata placeholderMetadata = metadata(thin_io::entry_kind::directory, 7, 4);
+	placeholderMetadata.attributes.reparse_tag = cloudTag;
+	filesystem.metadataByPath.emplace(placeholderPath, placeholderMetadata);
+	filesystem.directories.emplace(placeholderPath, std::vector<thin_io::directory_entry>{});
 	std::atomic_bool canceled = false;
 
 	const Snapshot snapshot = completedSnapshot(scanSnapshot(rootPath(), filesystem, canceled));
-	CHECK(snapshot.root.children.at(nativeName("hidden")).metadata.has_value());
 	CHECK(snapshot.diagnostics.empty());
+	CHECK(snapshot.root.children.at(nativeName("hidden")).metadata.has_value());
+	const SnapshotEntry& scannedSyncRoot = snapshot.root.children.at(nativeName("sync-root"));
+	CHECK(scannedSyncRoot.traversalState == DirectoryTraversalState::completed);
+	CHECK(scannedSyncRoot.attributes.reparseTag == 0);
+	const SnapshotEntry& scannedPlaceholder = snapshot.root.children.at(nativeName("placeholder"));
+	CHECK(scannedPlaceholder.traversalState == DirectoryTraversalState::completed);
+	CHECK(scannedPlaceholder.attributes.reparseTag == cloudTag);
 }
 
 TEST_CASE("Snapshot scanner cancellation never returns a partial snapshot", "[snapshot][scanner]")

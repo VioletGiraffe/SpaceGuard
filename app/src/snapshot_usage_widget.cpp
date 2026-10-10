@@ -105,7 +105,7 @@ QString entryQualification(const SnapshotEntry& entry)
 		qualifications.push_back("Directory metadata was unavailable; this subtree was not traversed.");
 		break;
 	case DirectoryTraversalState::link_boundary:
-		qualifications.push_back("This link or reparse target was intentionally not traversed.");
+		qualifications.push_back("This link target was intentionally not traversed.");
 		break;
 	case DirectoryTraversalState::mount_boundary:
 		qualifications.push_back("This filesystem or mount boundary was intentionally not traversed.");

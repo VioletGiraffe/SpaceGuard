@@ -244,8 +244,6 @@ bool isValidEntry(const SnapshotEntry& entry, const uint32_t depth, uint64_t& to
 	if (kind > SnapshotEntryKind::other)
 		return false;
 
-	if (!entry.attributes.isLink && entry.attributes.reparseTag != 0)
-		return false;
 	if (entry.metadata && entry.metadata->hardLinkCount == 0)
 		return false;
 

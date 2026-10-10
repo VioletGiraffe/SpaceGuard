@@ -261,13 +261,16 @@ private:
 				recordDiagnostic(childPath, SnapshotOperation::entry_metadata, metadata.error().native_code);
 				continue;
 			}
-			if (snapshotAttributes(metadata->attributes) != child.attributes)
+			const SnapshotEntryAttributes queriedAttributes = snapshotAttributes(metadata->attributes);
+			// The listing and the query can disagree on the other attributes, e.g. a Windows cloud sync root's reparse tag.
+			if (queriedAttributes.kind != child.attributes.kind || queriedAttributes.isLink != child.attributes.isLink)
 			{
 				markMetadataUnavailable(child);
 				recordDiagnostic(childPath, SnapshotOperation::entry_changed_during_scan, {});
 				continue;
 			}
 
+			child.attributes = queriedAttributes;
 			child.metadata = snapshotMetadata(*metadata);
 			if (child.attributes.kind != SnapshotEntryKind::directory)
 				continue;

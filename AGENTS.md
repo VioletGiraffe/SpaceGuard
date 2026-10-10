@@ -76,8 +76,11 @@ filesystems remain deterministic without adding substitution machinery to the ap
   `thin_io`, avoiding a UTF-8 round trip.
 - Resolve a factual descendant into path components with `nativeDescendantComponents()`; it validates separator
   boundaries and preserves native component spelling/bytes without a display-string round trip.
-- Do not traverse symbolic links, junctions, mount points, or other directory reparse targets while accounting for a
-  selected filesystem. Report the entry, but keep traversal within the chosen tree/volume.
+- Do not traverse symbolic links, junctions, or mount points while accounting for a selected filesystem. Report the
+  entry, but keep traversal within the chosen tree/volume. Other Windows reparse directories, such as cloud placeholders,
+  hold the tree's own data and are traversed.
+- A directory listing and a metadata query can report different attributes for the same unchanged entry (a Windows
+  cloud sync root's reparse tag, macOS `UF_HIDDEN`). Only kind and link status identify an entry replaced between them.
 - Linux traversal compares the scan-local `statx` mount ID as well as filesystem identity so bind mounts are boundaries
   even when they retain the target's device ID. Mount identity is traversal-only and is not persisted across scans.
 - A failed or incomplete directory enumeration must never be treated as an empty, authoritative subtree.
