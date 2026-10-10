@@ -86,9 +86,8 @@ thin_io::entry_attributes attributes(const thin_io::entry_kind kind, const bool 
 thin_io::entry_metadata metadata(const thin_io::entry_kind kind, const uint64_t filesystem,
 	const uint8_t seed, const uint64_t allocatedSize = 0, const uint64_t hardLinkCount = 1, const bool isLink = false)
 {
-	thin_io::entry_metadata result{attributes(kind, isLink), allocatedSize, allocatedSize, hardLinkCount, identity(filesystem, seed)};
-	result.mount_id = filesystem;
-	return result;
+	return {.attributes = attributes(kind, isLink), .logical_size = allocatedSize, .allocated_size = allocatedSize,
+		.hard_link_count = hardLinkCount, .identity = identity(filesystem, seed), .mount_id = filesystem};
 }
 
 thin_io::directory_entry listed(const char* name, const thin_io::entry_kind kind, const bool isLink = false)
